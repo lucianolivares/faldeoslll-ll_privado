@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alarmas comunitarias · Faldeos III-II (privado)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --ink:#16202b; --muted:#66707d; --faint:#9aa3ad; --bg:#eef1f4; --panel:#fff; --line:#e4e8ec; --soft:#f5f7f9;
+    --gris:#c3c8cf; --ok:#1e9e5a; --warn:#d97706; --bad:#dc2626; --accent:#0f766e;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px -12px rgba(16,24,40,.25);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:14px;-webkit-font-smoothing:antialiased}
+  #app{display:grid;grid-template-columns:1fr 380px;grid-template-rows:56px 1fr;height:100%}
+  header{grid-column:1/3;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);z-index:5}
+  .brand{display:flex;align-items:center;gap:10px;min-width:0}
+  .brand .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#0f766e,#6a4fd8);display:grid;place-items:center;color:#fff;flex:none}
+  .brand h1{font-size:15px;margin:0;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand small{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:1px}
+  .tag{font-size:10.5px;padding:3px 8px;border-radius:999px;font-weight:600;letter-spacing:.3px;white-space:nowrap}
+  .tag.priv{background:#fde8e8;color:#9b1c1c}.tag.pub{background:#e6f4ea;color:#166534}
+  .search{position:relative;flex:1;max-width:380px;margin-left:auto}
+  .search input{width:100%;padding:8px 12px 8px 34px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:13px;background:var(--soft);outline:none}
+  .search input:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(15,118,110,.12)}
+  .search svg{position:absolute;left:11px;top:9px;width:16px;height:16px;color:var(--faint)}
+  .src{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .src i{width:8px;height:8px;border-radius:50%;background:var(--faint);display:inline-block}
+  .src.live i{background:var(--ok)}
+  #map{background:#e9ecef;position:relative}
+  .layers{position:absolute;top:12px;right:12px;z-index:800;display:flex;flex-direction:column;gap:6px}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.96);border:1px solid var(--line);font-size:12px;font-weight:500;cursor:pointer;user-select:none;box-shadow:var(--shadow)}
+  .chip input{margin:0;accent-color:var(--accent)}
+  .chip .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .legend{white-space:nowrap;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:12px;line-height:1.85;box-shadow:var(--shadow);min-width:230px}
+  .legend b{display:block;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .legend .sw{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-2px;margin-right:7px;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2)}
+  .legend .sq{border-radius:2px;transform:rotate(45deg) scale(.8)}
+  .legend .ring{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-2px;margin-right:7px;border:2px dashed #555}
+  .legend .disc{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-2px;margin-right:7px;border:1.5px solid #555;background:rgba(85,85,85,.15)}
+  aside{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .tabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px}
+  .tabs button{flex:1;padding:12px 6px;border:0;background:none;font:inherit;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--ink);border-color:var(--accent)}
+  .body{overflow:auto;padding:16px;flex:1}
+  h2{font-size:15px;margin:0 0 2px;font-weight:650;line-height:1.3}
+  h3{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:18px 0 8px;font-weight:600}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:10px}
+  .kv{display:grid;grid-template-columns:118px 1fr;gap:6px 10px;margin:10px 0;font-size:13px}
+  .kv div:nth-child(odd){color:var(--muted)}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;color:#fff;vertical-align:middle}
+  .card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:#fff}
+  .card b{display:block;font-weight:600}
+  .meta{color:var(--muted);font-size:12px}
+  .card a{color:var(--ink);text-decoration:none;font-variant-numeric:tabular-nums;font-weight:500}
+  .inf{color:var(--faint)}
+  .empty{color:var(--muted);padding:24px 8px;text-align:center;line-height:1.5}
+  .note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);margin-top:16px;padding-top:10px;line-height:1.5}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:9px;border:1px solid var(--line);background:#fff;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn:hover{filter:brightness(.97)}
+  .formbox{margin:14px 0 4px;padding:12px;border-radius:10px;background:#eef7f5;border:1px solid #cfe7e2}
+  .formbox .btn{width:100%;justify-content:center;font-size:13.5px;padding:10px}
+  .formbox .meta{margin-top:8px;line-height:1.45}
+  .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 4px}
+  .stat div{background:var(--soft);border-radius:10px;padding:10px;text-align:center}
+  .stat .n{font-size:20px;font-weight:700;line-height:1.1}
+  .stat .l{font-size:11px;color:var(--muted);margin-top:3px}
+  .bar{height:8px;border-radius:999px;background:var(--soft);overflow:hidden;margin:4px 0 2px}
+  .bar i{display:block;height:100%;border-radius:999px;background:var(--accent)}
+  .bar i.warn{background:var(--warn)}.bar i.bad{background:var(--bad)}
+  .cupo{margin:8px 0 12px}
+  .cupo .t{display:flex;justify-content:space-between;font-size:12.5px}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
+  .chips span{font-size:11.5px;padding:2px 8px;border-radius:6px;background:var(--soft);cursor:pointer;border:1px solid transparent}
+  .chips span:hover{border-color:var(--line);background:#fff}
+  .chips span.bad{background:#fee2e2;color:#991b1b}
+  .range{display:grid;grid-template-columns:1fr 74px;gap:8px;align-items:center;margin:6px 0}
+  .range input[type=range]{width:100%;accent-color:var(--accent)}
+  .range input[type=number]{width:100%;padding:5px 7px;border:1px solid var(--line);border-radius:7px;font:inherit;font-size:12.5px}
+  .range label{grid-column:1/3;font-size:12.5px;display:flex;justify-content:space-between;color:var(--muted)}
+  .range label b{color:var(--ink);font-weight:600}
+  .trig{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .trig:last-child{border:0}
+  .trig .st{width:9px;height:9px;border-radius:50%;flex:none;margin-top:5px}
+  .st.ok{background:var(--ok)}.st.warn{background:var(--warn)}.st.bad{background:var(--bad)}
+  .house{width:0;height:0}.house svg{overflow:visible;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.35))}
+  .lbl{font-size:11px;font-weight:600;color:#1c2430;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
+  .lbl.inf{color:#7a8290;font-weight:500}
+  .street{display:inline-block;position:absolute;left:0;top:0;font-size:13px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#334155;white-space:nowrap;text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 6px #fff;pointer-events:none}
+  .idbadge{position:absolute;left:12px;top:-22px;background:#111827;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;letter-spacing:.3px}
+  .leaflet-tooltip.num{background:transparent;border:0;box-shadow:none;padding:0}
+  .leaflet-tooltip.num::before{display:none}
+  .leaflet-container{font-family:inherit}
+  .leaflet-bar a{color:var(--ink)}
+  @media (max-width:820px){
+    #app{grid-template-columns:1fr;grid-template-rows:56px 1fr 46vh}
+    aside{border-left:0;border-top:1px solid var(--line)}
+    .src{display:none}.brand small{display:none}.search{max-width:none}
+    .legend{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M12 8v4"/><path d="M12 15h.01"/></svg></div>
+      <div><h1>Alarmas comunitarias · Faldeos III-II</h1><small>Mapa de gestión · uso interno de la directiva</small></div>
+    </div>
+    <span class="tag priv">PRIVADO · con teléfonos</span>
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="q" type="search" placeholder="Buscar casa: número, id (E-19) o nombre…" autocomplete="off"></div>
+    <span class="src" id="src"><i></i>cargando…</span>
+  </header>
+  <div id="map">
+    <div class="layers" id="layers"></div>
+  </div>
+  <aside>
+    <div class="tabs"><button class="on" data-tab="detalle">Detalle</button><button data-tab="resumen">Cobertura y cupos</button></div>
+    <div class="body" id="panel"><div class="empty">Haz clic en una casa o en un círculo de alcance.</div></div>
+  </aside>
+</div>
+
+<script>
+// ===================== CONFIGURACIÓN =====================
+// Pega aquí los enlaces "Publicar en la web → CSV" de cada pestaña de la planilla.
+// Mientras estén vacíos, el mapa usa la copia embebida (SNAPSHOT) al final de este archivo.
+const CONFIG = {
+  csv: {
+    casas:     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQsTwkcmZm2w0N_GrKs9Pejb3WZ6Pt_iQANRcGoUyrnr3ynulg2lQQzkoWZEytyW0VBdZ75Fxkk_fu_/pub?single=true&output=csv&gid=913056490",
+    contactos: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQsTwkcmZm2w0N_GrKs9Pejb3WZ6Pt_iQANRcGoUyrnr3ynulg2lQQzkoWZEytyW0VBdZ75Fxkk_fu_/pub?single=true&output=csv&gid=1248360298",
+    controles: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQsTwkcmZm2w0N_GrKs9Pejb3WZ6Pt_iQANRcGoUyrnr3ynulg2lQQzkoWZEytyW0VBdZ75Fxkk_fu_/pub?single=true&output=csv&gid=1268667683",
+    alarmas:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQsTwkcmZm2w0N_GrKs9Pejb3WZ6Pt_iQANRcGoUyrnr3ynulg2lQQzkoWZEytyW0VBdZ75Fxkk_fu_/pub?single=true&output=csv&gid=1504940346"
+  },
+  plano: { src: "plano.jpg", ancho: 3651, alto: 4953 },   // tamaño del PNG original en px (sistema de coord_x / coord_y)
+  pxPorMetro: 17.3,               // escala calibrada con el terreno C-02 (10,15 m de frente = 174–177 px)
+  cupos: { numeros: 200, controles: 20, controlesTotal: 60 },
+  colores: { A: "#0e8f8a", B: "#6a4fd8", C: "#e07b1a", D: "#b5316b" },
+  nombresSector: { A: "Sector A · Norte (A1)", B: "Sector B · Oriente (A2)", C: "Sector C · Surponiente (A3)", D: "Sector D" },
+  vias: [
+    { nombre: "Calle Jorge Armando Saavedra Plaza", x: 2100, y: 1000, rot: 27,  minZoom: -9 },
+    { nombre: "Calle Inés Verdejo González",        x: 880,  y: 2750, rot: -80, minZoom: -9 },
+    { nombre: "Calle Inés Verdejo González",        x: 1650, y: 4060, rot: 10,  minZoom: -1.75 },
+    { nombre: "Calle Inés Verdejo González",        x: 2830, y: 3500, rot: -80, minZoom: -1.75 },
+    { nombre: "Pasaje Rafael Segundo Araya Villanueva", x: 1620, y: 2590, rot: 30,  minZoom: -1.75 },
+    { nombre: "Pasaje Alfonso del Carmen Araya Castillo", x: 1510, y: 3080, rot: -38, minZoom: -1.75 },
+    { nombre: "Pasaje Dafne Castillo",              x: 2550, y: 3130, rot: -70, minZoom: -1.75 }
+  ],
+  privado: true,
+  form: {   // Google Form de completado de datos (Etapa 5). Los entry.* son los IDs de las preguntas prellenadas.
+    url: "https://docs.google.com/forms/d/e/1FAIpQLSfDikyDrbRmFa0d-H55p2ZRkf5KdFDhbRB5zBl_p0F-MJLtiw/viewform",
+    entryIdCasa: "entry.195855574", entryDireccion: "entry.2050356861", entryNombre: "entry.223763820"
+  }
+};
+// ==========================================================
+
+const W = CONFIG.plano.ancho, H = CONFIG.plano.alto;
+const toLL = (x, y) => [H - y, x];
+const map = L.map("map", { crs: L.CRS.Simple, minZoom: -3, maxZoom: 2, zoomSnap: 0.25, zoomDelta: 0.5, attributionControl: false, zoomControl: false });
+L.control.zoom({ position: "topleft" }).addTo(map);
+const bounds = [[0, 0], [H, W]];
+L.imageOverlay(CONFIG.plano.src, bounds, { opacity: 0.95 }).addTo(map);
+map.fitBounds(bounds);
+map.setMaxBounds([[-800, -800], [H + 800, W + 800]]);
+
+const layers = { audible: L.layerGroup().addTo(map), rf: L.layerGroup().addTo(map), casas: L.layerGroup().addTo(map), vias: L.layerGroup().addTo(map) };
+let DATA = { casas: [], contactos: [], controles: [], alarmas: [] };
+let markers = {}, byId = {};
+const si = v => (v || "").toString().trim().toLowerCase() === "sí";
+const esc = s => (s ?? "").toString().replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const tel164 = v => { let d = String(v ?? "").replace(/\.0+$/, "").replace(/\D/g, ""); if (d.length === 9 && d[0] === "9") d = "56" + d; return d.length === 11 && d.startsWith("56") ? "+" + d : (v ?? "").toString().trim(); };
+const num = v => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(n) ? n : 0; };
+
+// ---------- ajustes locales (radios y escala editados en la interfaz) ----------
+const LS_KEY = "faldeos_ajustes_v1";
+let AJ = { pxPorMetro: null, alarmas: {} };
+try { AJ = Object.assign(AJ, JSON.parse(localStorage.getItem(LS_KEY) || "{}")); } catch (e) {}
+const saveAJ = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(AJ)); } catch (e) {} };
+const pxm = () => AJ.pxPorMetro || CONFIG.pxPorMetro;
+function radios(al) {
+  const o = AJ.alarmas[al.id_sector] || {};
+  return { audible: o.audible ?? num(al.radio_audible_m), rf: o.rf ?? num(al.radio_rf_m), editado: o.audible != null || o.rf != null };
+}
+const distM = (a, b) => Math.hypot(num(a.coord_x) - num(b.coord_x), num(a.coord_y) - num(b.coord_y)) / pxm();
+
+// ---------- carga ----------
+function parseCSV(text) { return Papa.parse(text.trim(), { header: true, skipEmptyLines: true, transformHeader: h => h.trim() }).data; }
+async function loadTab(name) {
+  const url = CONFIG.csv[name];
+  if (url) {
+    const r = await fetch(url + (url.includes("?") ? "&" : "?") + "_=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw new Error(name + ": HTTP " + r.status);
+    return { rows: parseCSV(await r.text()), live: true };
+  }
+  return { rows: parseCSV(SNAPSHOT[name]), live: false };
+}
+async function loadAll() {
+  const names = ["casas", "contactos", "controles", "alarmas"]; let live = 0;
+  for (const n of names) {
+    try { const t = await loadTab(n); DATA[n] = t.rows; if (t.live) live++; }
+    catch (e) { console.warn(e); DATA[n] = parseCSV(SNAPSHOT[n]); }
+  }
+  DATA.alarmas = DATA.alarmas.filter(a => /^[A-Z]$/.test((a.id_sector || "").trim()));
+  byId = Object.fromEntries(DATA.casas.map(c => [c.id_casa, c]));
+  const src = document.getElementById("src");
+  src.className = "src" + (live === names.length ? " live" : "");
+  const local = location.protocol === "file:";
+  src.innerHTML = "<i></i>" + (live === names.length ? "Planilla en vivo" : live ? `${live}/4 pestañas en vivo` : "Copia local del " + SNAPSHOT_FECHA + (local ? " · abierto desde el disco" : ""));
+  if (local && live < names.length) src.title = "Google no entrega los CSV a páginas abiertas desde el disco (origen file://). Publicado en un sitio web (GitHub Pages) o servido con http://localhost, el mapa lee la planilla en vivo.";
+  render();
+}
+
+// ---------- capas conmutables ----------
+const VIS = { audible: true, rf: true, noafil: true, numeros: true };
+function buildLayerChips() {
+  const el = document.getElementById("layers");
+  const items = [["audible", "Alcance audible"], ["rf", "Alcance RF"], ["noafil", "Casas no afiliadas"], ["numeros", "Números de casa"]];
+  el.innerHTML = items.map(([k, t]) => `<label class="chip"><input type="checkbox" data-k="${k}" ${VIS[k] ? "checked" : ""}> ${t}</label>`).join("");
+  el.querySelectorAll("input").forEach(i => i.addEventListener("change", () => { VIS[i.dataset.k] = i.checked; render(); }));
+}
+buildLayerChips();
+
+// ---------- render ----------
+function colorCasa(c) { return si(c.afiliada) ? (CONFIG.colores[(c.sector || "").trim()] || "#3b82f6") : null; }
+function iconCasa(c) {
+  const col = colorCasa(c), fill = col || "#c3c8cf", stroke = col ? "#fff" : "#8f979f";
+  const control = si(c.tiene_control), anf = si(c.es_anfitriona), comp = (c.afiliada || "").toLowerCase() === "compromiso", ident = si(c.modulo_identificador);
+  let svg;
+  if (anf) svg = `<svg width="36" height="36" viewBox="-18 -18 36 36"><circle r="15" fill="${fill}" stroke="#fff" stroke-width="2.5"/><path d="M0,-9.5 L2.8,-3 L9.7,-2.7 L4.3,1.7 L6.1,8.4 L0,4.6 L-6.1,8.4 L-4.3,1.7 L-9.7,-2.7 L-2.8,-3 Z" fill="#fff"/></svg>`;
+  else if (control) svg = `<svg width="26" height="26" viewBox="-13 -13 26 26"><rect x="-8.5" y="-8.5" width="17" height="17" rx="3" transform="rotate(45)" fill="${fill}" stroke="${stroke}" stroke-width="2"/><circle r="2.6" fill="#fff"/></svg>`;
+  else svg = `<svg width="24" height="24" viewBox="-12 -12 24 24"><circle r="8" fill="${fill}" stroke="${stroke}" stroke-width="2" ${comp ? 'stroke-dasharray="3 2"' : ""}/></svg>`;
+  if (ident) svg += `<span class="idbadge">ID</span>`;
+  return L.divIcon({ className: "house", html: svg, iconSize: [0, 0], iconAnchor: [0, 0] });
+}
+function alarmaDe(c) { return DATA.alarmas.find(a => (a.id_casa_anfitriona || "").trim() === c.id_casa); }
+function render() {
+  Object.values(layers).forEach(l => l.clearLayers()); markers = {};
+  // círculos de alcance
+  for (const al of DATA.alarmas) {
+    const anf = byId[(al.id_casa_anfitriona || "").trim()]; if (!anf || !num(anf.coord_x)) continue;
+    const col = CONFIG.colores[al.id_sector] || "#3b82f6", r = radios(al), ll = toLL(num(anf.coord_x), num(anf.coord_y));
+    if (VIS.audible && r.audible > 0) L.circle(ll, { radius: r.audible * pxm(), color: col, weight: 1.5, fillColor: col, fillOpacity: .08, opacity: .8 }).on("click", () => showAlarma(al.id_sector)).addTo(layers.audible);
+    if (VIS.rf && r.rf > 0) L.circle(ll, { radius: r.rf * pxm(), color: col, weight: 1.5, dashArray: "8 6", fill: false, opacity: .9 }).on("click", () => showAlarma(al.id_sector)).addTo(layers.rf);
+  }
+  for (const c of DATA.casas) {
+    const x = num(c.coord_x), y = num(c.coord_y); if (!x || !y) continue;
+    if (!VIS.noafil && !si(c.afiliada) && (c.afiliada || "").toLowerCase() !== "compromiso") continue;
+    const m = L.marker(toLL(x, y), { icon: iconCasa(c), riseOnHover: true }).addTo(layers.casas);
+    m.on("click", () => showCasa(c.id_casa));
+    const inf = (c.origen_numero || "") === "inferido";
+    if (VIS.numeros) m.bindTooltip(`<span class="lbl ${inf ? "inf" : ""}">${inf ? "(" + esc(c.numero) + ")" : esc(c.numero)}</span>`, { permanent: true, direction: "right", offset: [12, 0], className: "num", interactive: false });
+    markers[c.id_casa] = m;
+  }
+  for (const v of CONFIG.vias) L.marker(toLL(v.x, v.y), { interactive: false, icon: L.divIcon({ className: "", html: `<div class="street" data-minzoom="${v.minZoom ?? -9}" style="transform:translate(-50%,-50%) rotate(${v.rot}deg)">${v.nombre}</div>`, iconSize: [0, 0] }) }).addTo(layers.vias);
+  updateLabels();
+  if (activeTab === "resumen") showResumen();
+}
+function updateLabels() {
+  const z = map.getZoom();
+  document.querySelectorAll(".leaflet-tooltip.num").forEach(el => el.style.display = z >= -1.25 ? "" : "none");
+  document.querySelectorAll(".street").forEach(el => { el.style.fontSize = (z >= -1 ? 15 : z >= -2 ? 12 : 10) + "px"; el.style.display = z >= +el.dataset.minzoom ? "" : "none"; });
+}
+map.on("zoomend", updateLabels);
+
+// ---------- análisis ----------
+function analisis() {
+  const afil = DATA.casas.filter(c => si(c.afiliada));
+  const porSector = {};
+  for (const al of DATA.alarmas) {
+    const s = al.id_sector, anf = byId[(al.id_casa_anfitriona || "").trim()], r = radios(al);
+    const casas = DATA.casas.filter(c => (c.sector || "").trim() === s);
+    const afilS = casas.filter(c => si(c.afiliada));
+    const ctrlCasas = afilS.filter(c => si(c.tiene_control));
+    const ctrlEnl = DATA.controles.filter(k => (k.sector || "").trim() === s && ["enlazado", "probado"].includes((k.estado || "").trim().toLowerCase()));
+    const cts = DATA.contactos.filter(k => byId[k.id_casa] && (byId[k.id_casa].sector || "").trim() === s && (k.estado_telefono || "ok").trim() === "ok");
+    const cargados = cts.filter(k => si(k.cargado_en_alarma)), verificados = cargados.filter(k => si(k.verificado));
+    const fueraAud = anf ? afilS.filter(c => distM(c, anf) > r.audible) : afilS;
+    const fueraRF = anf ? ctrlCasas.filter(c => distM(c, anf) > r.rf) : ctrlCasas;
+    const lejana = anf && afilS.length ? afilS.map(c => [distM(c, anf), c]).sort((a, b) => b[0] - a[0])[0] : null;
+    porSector[s] = { al, anf, r, casas, afilS, ctrlCasas, ctrlEnl, cts, cargados, verificados, fueraAud, fueraRF, lejana };
+  }
+  const anfs = DATA.alarmas.map(a => ({ a, anf: byId[(a.id_casa_anfitriona || "").trim()], r: radios(a) })).filter(o => o.anf);
+  const sinSirena = afil.filter(c => !anfs.some(o => distM(c, o.anf) <= o.r.audible));
+  const sinRF = afil.filter(c => si(c.tiene_control) && !anfs.some(o => distM(c, o.anf) <= o.r.rf));
+  const totalCtrl = afil.filter(c => si(c.tiene_control)).length;
+  const maxCtrlSector = Math.max(0, ...Object.values(porSector).map(o => o.ctrlCasas.length));
+  return { afil, porSector, sinSirena, sinRF, totalCtrl, maxCtrlSector };
+}
+
+// ---------- paneles ----------
+let activeTab = "detalle";
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+  activeTab = b.dataset.tab; activeTab === "resumen" ? showResumen() : (lastDetail ? lastDetail() : setPanel(`<div class="empty">Haz clic en una casa o en un círculo de alcance.</div>`));
+}));
+let lastDetail = null;
+const setPanel = h => document.getElementById("panel").innerHTML = h;
+function goTab(t) { document.querySelector(`.tabs button[data-tab=${t}]`).click(); }
+const bar = (v, max) => { const p = Math.min(100, 100 * v / max); return `<div class="bar"><i class="${p >= 100 ? "bad" : p >= 80 ? "warn" : ""}" style="width:${p}%"></i></div>`; };
+const chip = (c, bad) => `<span class="${bad ? "bad" : ""}" onclick="focusCasa('${c.id_casa}')">${esc(c.id_casa)} · ${esc(c.numero)}</span>`;
+function focusCasa(id) { const c = byId[id]; if (!c) return; map.setView(toLL(num(c.coord_x), num(c.coord_y)), Math.max(map.getZoom(), -0.5)); showCasa(id); }
+
+function showCasa(id) {
+  const c = byId[id]; if (!c) return;
+  lastDetail = () => showCasa(id); if (activeTab !== "detalle") { activeTab = "detalle"; document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === "detalle")); }
+  const col = colorCasa(c), inf = (c.origen_numero || "") === "inferido", s = (c.sector || "").trim();
+  const cts = DATA.contactos.filter(r => r.id_casa === id).sort((a, b) => (num(a.prioridad) || 9) - (num(b.prioridad) || 9));
+  const ctrls = DATA.controles.filter(r => r.id_casa === id);
+  const al = alarmaDe(c);
+  const anfS = DATA.alarmas.find(a => a.id_sector === s), anf = anfS && byId[(anfS.id_casa_anfitriona || "").trim()];
+  const estado = si(c.afiliada) ? `<span class="pill" style="background:${col}">Afiliada · ${esc(CONFIG.nombresSector[s] || s || "sin sector")}</span>`
+    : (c.afiliada || "").toLowerCase() === "compromiso" ? `<span class="pill" style="background:#8f979f">Compromiso de pago</span>`
+    : `<span class="pill" style="background:#e5e7eb;color:#374151">No afiliada aún</span>`;
+  let h = `<h2>${esc(c.calle)} ${inf ? `<span class="inf">(${esc(c.numero)})</span>` : esc(c.numero)}</h2>
+    <div class="sub">${esc(c.id_casa)} · manzana ${esc(c.manzana)} lote ${esc(c.lote)}${inf ? " · <em>número inferido, por confirmar</em>" : ""}</div>
+    <div>${estado}</div>
+    <div class="kv">
+      <div>Control RF</div><div>${si(c.tiene_control) ? "sí" + (ctrls.length ? " · N° " + ctrls.map(k => esc(k.n_control)).join(", ") : " · <span class='inf'>sin número asignado</span>") : esc(c.tiene_control || "no")}</div>
+      ${anf && si(c.afiliada) ? `<div>Distancia a alarma</div><div>${Math.round(distM(c, anf))} m hasta ${esc(anf.id_casa)}${anfS ? (distM(c, anf) <= radios(anfS).audible ? ` · <span style="color:var(--ok)">dentro del radio audible</span>` : ` · <span style="color:var(--bad)">fuera del radio audible</span>`) : ""}</div>` : ""}
+      ${si(c.es_anfitriona) ? `<div>Anfitriona</div><div><b>sí</b> · alarma del ${esc(CONFIG.nombresSector[s] || s)}${si(c.modulo_identificador) ? " · <b>módulo identificador</b>" : ""}</div>` : ""}
+      ${c.situacion_vivienda ? `<div>Vivienda</div><div>${esc(c.situacion_vivienda)}</div>` : ""}
+      ${CONFIG.privado && c.fecha_pago ? `<div>Pago</div><div>${esc(c.fecha_pago)}</div>` : ""}
+      ${CONFIG.privado && c.notas ? `<div>Notas</div><div class="meta">${esc(c.notas)}</div>` : ""}
+    </div>`;
+  if (al) h += `<button class="btn primary" onclick="showAlarma('${al.id_sector}')">Ver alarma del ${esc(CONFIG.nombresSector[al.id_sector] || al.id_sector)} →</button>`;
+  if (CONFIG.privado) {
+    h += `<h3>Contactos (${cts.length})</h3>`;
+    if (!cts.length) h += `<div class="empty">Sin contactos registrados.</div>`;
+    for (const k of cts) {
+      const tel = tel164(k.telefono);
+      h += `<div class="card"><b>${esc(k.nombre)} <span class="meta">· ${esc(k.rol)}</span></b>
+        <div>${tel ? `<a href="tel:${esc(tel)}">${esc(tel)}</a>` : `<span class="inf">sin teléfono — pendiente</span>`}${k.estado_telefono && k.estado_telefono !== "ok" && tel ? ` <span class="meta">(${esc(k.estado_telefono)})</span>` : ""}</div>
+        <div class="meta">${si(k.cargado_en_alarma) ? "✔ cargado en alarma" : "○ no cargado"} · ${si(k.verificado) ? "✔ verificado" : "○ sin verificar"}${k.email ? " · " + esc(k.email) : ""}</div>
+        ${k.nota ? `<div class="meta">${esc(k.nota)}</div>` : ""}</div>`;
+    }
+  } else {
+    const adm = cts.find(k => (k.rol || "").toLowerCase() === "administrador");
+    h += `<div class="kv"><div>Administrador</div><div>${adm ? esc(adm.nombre) : "<em>sin registrar</em>"}</div></div>`;
+  }
+  if (CONFIG.form.url) h += `<div class="formbox"><button class="btn primary" onclick="abrirForm('${id}')">✎ Completar / corregir mis datos</button><div class="meta">Se abre un formulario con la dirección y el nombre ya cargados; ahí agregas o corriges los teléfonos que activarán la alarma. Datos administrados por la directiva vecinal de Faldeos III-II, solo para operar el sistema de alarmas.</div></div>`;
+  h += `<div class="note">Los datos se leen de la planilla; para corregirlos edita la planilla y recarga.</div>`;
+  setPanel(h);
+  const m = markers[id]; if (m) map.panTo(m.getLatLng());
+}
+
+function showAlarma(s) {
+  const A = analisis(), o = A.porSector[s]; if (!o) return;
+  lastDetail = () => showAlarma(s); if (activeTab !== "detalle") { activeTab = "detalle"; document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === "detalle")); }
+  const col = CONFIG.colores[s] || "#3b82f6", al = o.al;
+  let h = `<h2><span class="pill" style="background:${col}">Alarma ${esc(s)}</span> ${esc(CONFIG.nombresSector[s] || "")}</h2>
+    <div class="sub">${o.anf ? `Anfitriona ${esc(o.anf.id_casa)} · ${esc(o.anf.calle)} ${esc(o.anf.numero)}` : "<b style='color:var(--warn)'>Sin casa anfitriona definida</b> — sin círculo en el mapa"}${al.numero_sim ? " · SIM " + esc(al.numero_sim) : ""}${al.fecha_instalacion ? " · instalada " + esc(al.fecha_instalacion) : ""}</div>
+    <div class="stat"><div><div class="n">${o.afilS.length}</div><div class="l">casas afiliadas</div></div><div><div class="n">${o.casas.length}</div><div class="l">casas del sector</div></div><div><div class="n">${o.lejana ? Math.round(o.lejana[0]) + " m" : "—"}</div><div class="l">afiliada más lejana</div></div></div>
+    <h3>Cupos</h3>
+    <div class="cupo"><div class="t"><span>Números cargados</span><span><b>${o.cargados.length}</b> / ${CONFIG.cupos.numeros} · ${o.cts.length} con teléfono válido</span></div>${bar(o.cargados.length, CONFIG.cupos.numeros)}<div class="meta">${o.verificados.length} verificados por llamada</div></div>
+    <div class="cupo"><div class="t"><span>Controles RF</span><span><b>${o.ctrlEnl.length}</b> enlazados / ${CONFIG.cupos.controles} · ${o.ctrlCasas.length} casas con control</span></div>${bar(Math.max(o.ctrlEnl.length, o.ctrlCasas.length), CONFIG.cupos.controles)}<div class="meta">${o.ctrlCasas.length > CONFIG.cupos.controles ? `<span style="color:var(--bad)">Supera el tope de 20: reasignar casas a otro sector</span>` : `Bloque de numeración: ${s === "A" ? "1–20" : s === "B" ? "21–40" : s === "C" ? "41–60" : "—"}`}</div></div>`;
+  if (CONFIG.privado) {
+    const r = o.r;
+    h += `<h3>Radios de alcance ${r.editado ? `<span class="meta">(editados aquí · planilla: ${num(al.radio_audible_m)} / ${num(al.radio_rf_m)} m)</span>` : `<span class="meta">(valores de la planilla)</span>`}</h3>
+      <div class="range"><label>Audible (sirena) <b id="va">${r.audible} m</b></label><input type="range" min="30" max="600" step="5" value="${r.audible}" oninput="setRadio('${s}','audible',this.value)"><input type="number" min="0" max="2000" value="${r.audible}" onchange="setRadio('${s}','audible',this.value)"></div>
+      <div class="range"><label>RF (controles) <b id="vr">${r.rf} m</b></label><input type="range" min="30" max="1000" step="5" value="${r.rf}" oninput="setRadio('${s}','rf',this.value)"><input type="number" min="0" max="3000" value="${r.rf}" onchange="setRadio('${s}','rf',this.value)"></div>
+      <div class="meta" style="margin:6px 0 10px">Los ajustes se guardan solo en este navegador. Cuando midas en terreno, anota el valor definitivo en la pestaña <b>alarmas</b> de la planilla.${r.editado ? ` <a href="#" onclick="resetRadio('${s}');return false">Volver a los de la planilla</a>` : ""}</div>`;
+  }
+  h += `<h3>Cobertura con los radios actuales</h3>
+    <div class="trig"><span class="st ${o.fueraAud.length ? "bad" : "ok"}"></span><div><b>${o.fueraAud.length ? o.fueraAud.length + " afiliadas fuera del radio audible" : "Todas las afiliadas dentro del radio audible"}</b>${o.fueraAud.length ? `<div class="chips">${o.fueraAud.map(c => chip(c, true)).join("")}</div>` : ""}</div></div>
+    <div class="trig"><span class="st ${o.fueraRF.length ? "bad" : "ok"}"></span><div><b>${o.fueraRF.length ? o.fueraRF.length + " casas con control fuera del alcance RF" : "Todos los controles dentro del alcance RF"}</b>${o.fueraRF.length ? `<div class="chips">${o.fueraRF.map(c => chip(c, true)).join("")}</div>` : ""}</div></div>
+    <h3>Casas asignadas (${o.casas.length})</h3><div class="chips">${o.casas.map(c => chip(c, false)).join("")}</div>
+    <h3>Controles del bloque</h3><div class="meta">${o.ctrlEnl.length ? o.ctrlEnl.map(k => `N° ${esc(k.n_control)} → ${esc(k.id_casa || "?")}`).join(" · ") : "Ninguno enlazado todavía (pestaña controles, estado enlazado/probado)."}</div>
+    ${al.notas ? `<div class="note">${esc(al.notas)}</div>` : ""}`;
+  setPanel(h);
+}
+function setRadio(s, k, v) { v = Math.max(0, num(v)); AJ.alarmas[s] = Object.assign(AJ.alarmas[s] || {}, { [k]: v }); saveAJ(); render(); showAlarma(s); }
+function resetRadio(s) { delete AJ.alarmas[s]; saveAJ(); render(); showAlarma(s); }
+function setEscala(v) { v = num(v); AJ.pxPorMetro = v > 0 && Math.abs(v - CONFIG.pxPorMetro) > 0.01 ? v : null; saveAJ(); render(); showResumen(); }
+
+function showResumen() {
+  const A = analisis();
+  const ctrlTotal = A.totalCtrl, ctrlOk = ctrlTotal <= CONFIG.cupos.controlesTotal, secOk = A.maxCtrlSector <= CONFIG.cupos.controles;
+  const cts = DATA.contactos.filter(k => (k.estado_telefono || "ok").trim() === "ok"), cargados = cts.filter(k => si(k.cargado_en_alarma));
+  const afilSinTel = A.afil.filter(c => !DATA.contactos.some(k => k.id_casa === c.id_casa && (k.estado_telefono || "ok").trim() === "ok"));
+  let h = `<h2>Cobertura y cupos</h2><div class="sub">Calculado con los radios actuales y la escala ${pxm().toFixed(1)} px/m</div>
+    <div class="stat"><div><div class="n">${A.afil.length}</div><div class="l">afiliadas</div></div><div><div class="n">${ctrlTotal}</div><div class="l">controles RF</div></div><div><div class="n">${DATA.alarmas.filter(a => byId[(a.id_casa_anfitriona || "").trim()]).length}/${DATA.alarmas.length}</div><div class="l">alarmas ubicadas</div></div></div>
+    <h3>Disparadores para una 4ª alarma</h3>
+    <div class="trig"><span class="st ${A.sinSirena.length ? "bad" : "ok"}"></span><div><b>${A.sinSirena.length ? A.sinSirena.length + " afiliadas no escuchan ninguna sirena" : "Todas las afiliadas escuchan al menos una sirena"}</b>${A.sinSirena.length ? `<div class="chips">${A.sinSirena.map(c => chip(c, true)).join("")}</div>` : ""}</div></div>
+    <div class="trig"><span class="st ${A.sinRF.length ? "bad" : "ok"}"></span><div><b>${A.sinRF.length ? A.sinRF.length + " controles no alcanzan ninguna alarma" : "Todos los controles alcanzan al menos una alarma"}</b>${A.sinRF.length ? `<div class="chips">${A.sinRF.map(c => chip(c, true)).join("")}</div>` : ""}</div></div>
+    <div class="trig"><span class="st ${ctrlOk ? "ok" : "bad"}"></span><div><b>${ctrlTotal} controles en total</b> <span class="meta">(tope ${CONFIG.cupos.controlesTotal})</span></div></div>
+    <div class="trig"><span class="st ${secOk ? "ok" : "bad"}"></span><div><b>Máximo ${A.maxCtrlSector} controles en un sector</b> <span class="meta">(tope ${CONFIG.cupos.controles})</span></div></div>
+    <h3>Por alarma</h3>`;
+  for (const [s, o] of Object.entries(A.porSector)) {
+    const col = CONFIG.colores[s] || "#3b82f6";
+    h += `<div class="card" style="border-left:4px solid ${col};cursor:pointer" onclick="showAlarma('${s}')"><b>${esc(CONFIG.nombresSector[s] || s)} <span class="meta">· ${o.anf ? esc(o.anf.id_casa) : "sin anfitriona"}</span></b>
+      <div class="meta">${o.afilS.length} afiliadas · ${o.ctrlCasas.length} controles · ${o.cargados.length}/${CONFIG.cupos.numeros} números cargados · radios ${o.r.audible} / ${o.r.rf} m${o.lejana ? ` · más lejana ${Math.round(o.lejana[0])} m` : ""}</div>
+      ${o.fueraAud.length || o.fueraRF.length ? `<div class="meta" style="color:var(--bad)">${o.fueraAud.length} fuera audible · ${o.fueraRF.length} fuera RF</div>` : ""}</div>`;
+  }
+  if (CONFIG.privado) h += `<h3>Datos pendientes</h3>
+    <div class="trig"><span class="st ${afilSinTel.length ? "warn" : "ok"}"></span><div><b>${afilSinTel.length} afiliadas sin ningún teléfono válido</b>${afilSinTel.length ? `<div class="chips">${afilSinTel.map(c => chip(c, true)).join("")}</div>` : ""}</div></div>
+    <div class="trig"><span class="st ${cargados.length < cts.length ? "warn" : "ok"}"></span><div><b>${cts.length - cargados.length} teléfonos válidos aún no cargados</b> <span class="meta">de ${cts.length}</span></div></div>
+    <h3>Escala del plano</h3>
+    <div class="range"><label>Píxeles por metro <b>${pxm().toFixed(1)}</b></label><input type="range" min="10" max="25" step="0.1" value="${pxm()}" onchange="setEscala(this.value)"><input type="number" step="0.1" value="${pxm().toFixed(1)}" onchange="setEscala(this.value)"></div>
+    <div class="meta">Calibrada con el terreno C-02 (10,15 m de frente). Para verificarla en terreno: mide la distancia real entre dos casas y compárala con la del panel.${AJ.pxPorMetro ? ` <a href="#" onclick="setEscala(${CONFIG.pxPorMetro});return false">Volver a ${CONFIG.pxPorMetro}</a>` : ""}</div>`;
+  setPanel(h);
+}
+
+// ---------- formulario (Etapa 5) ----------
+function abrirForm(id) {
+  const c = byId[id]; if (!c || !CONFIG.form.url) return;
+  const adm = DATA.contactos.find(k => k.id_casa === id && (k.rol || "").toLowerCase() === "administrador");
+  const p = new URLSearchParams({ usp: "pp_url" });
+  if (CONFIG.form.entryDireccion) p.set(CONFIG.form.entryDireccion, `${c.calle} ${c.numero}`);
+  if (CONFIG.form.entryNombre && adm) p.set(CONFIG.form.entryNombre, adm.nombre);
+  if (CONFIG.form.entryIdCasa) p.set(CONFIG.form.entryIdCasa, c.id_casa);
+  window.open(CONFIG.form.url + (CONFIG.form.url.includes("?") ? "&" : "?") + p.toString(), "_blank");
+}
+
+// ---------- buscador ----------
+const q = document.getElementById("q");
+q.addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const t = q.value.trim().toLowerCase(); if (!t) return;
+  let c = DATA.casas.find(r => r.id_casa.toLowerCase() === t) || DATA.casas.find(r => String(r.numero) === t);
+  if (!c && CONFIG.privado) { const k = DATA.contactos.find(r => (r.nombre || "").toLowerCase().includes(t)); if (k) c = byId[k.id_casa]; }
+  if (c) focusCasa(c.id_casa); else { q.style.borderColor = "#dc2626"; setTimeout(() => q.style.borderColor = "", 800); }
+});
+
+// ---------- leyenda ----------
+const leg = L.control({ position: "bottomleft" });
+leg.onAdd = () => {
+  const d = L.DomUtil.create("div", "legend");
+  d.innerHTML = `<b>Leyenda</b>
+    <span class="sw" style="background:${CONFIG.colores.A}"></span>${CONFIG.nombresSector.A}<br>
+    <span class="sw" style="background:${CONFIG.colores.B}"></span>${CONFIG.nombresSector.B}<br>
+    <span class="sw" style="background:${CONFIG.colores.C}"></span>${CONFIG.nombresSector.C}<br>
+    <span class="sw" style="background:#c3c8cf"></span>No afiliada aún<br>
+    <span class="sw sq" style="background:#6b7280"></span>Con control RF &nbsp;·&nbsp; ★ Casa anfitriona<br>
+    <span class="disc"></span>Alcance audible &nbsp;·&nbsp; <span class="ring"></span>Alcance RF<br>
+    <span class="inf">(5471)</span> número inferido, por confirmar`;
+  L.DomEvent.disableClickPropagation(d);
+  return d;
+};
+leg.addTo(map);
+L.DomEvent.disableClickPropagation(document.getElementById("layers"));
+document.addEventListener("DOMContentLoaded", loadAll);
+</script>
+<!-- SNAPSHOT: copia de la planilla al momento de generar el archivo (se usa solo si CONFIG.csv está vacío) -->
+<script id="snapshot">
+const SNAPSHOT_FECHA = "12-09-2026";
+const SNAPSHOT = {"casas": "id_casa,calle,numero,origen_numero,sector,afiliada,tiene_control,es_anfitriona,coord_x,coord_y,notas,manzana,lote,situacion_vivienda,fecha_pago,id_respuesta_catastro,modulo_identificador,origen_ubicacion,tramo_numeracion\nC-01,Calle Inés Verdejo González,5479,confirmado,A,sí,no,no,3305,2124,,C,1,,02-09-2026,,no,modelo de secuencia,\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-02,Calle Inés Verdejo González,5477,inferido,A,no,no,no,3273,2274,\"Número inferido por secuencia: tramo C-15→C-01 (5451→5479), columna oriente\",C,2,,,,no,modelo de secuencia,\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-03,Calle Inés Verdejo González,5475,confirmado,A,sí,sí,no,3236,2444,,C,3,Habitada por el propietario,29-08-2026,47,no,catastro (lote declarado),\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-04,Calle Inés Verdejo González,5473,confirmado,A,sí,sí,no,3200,2613,,C,4,Habitada por el propietario,30-08-2026,11,no,catastro (lote declarado),\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-05,Calle Inés Verdejo González,5471,inferido,A,no,no,no,3163,2783,\"Número inferido por secuencia: tramo C-15→C-01 (5451→5479), columna oriente\",C,5,,,,no,modelo de secuencia,\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-06,Calle Inés Verdejo González,5469,inferido,A,no,no,no,3127,2952,\"Número inferido por secuencia: tramo C-15→C-01 (5451→5479), columna oriente\",C,6,,,,no,modelo de secuencia,\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-07,Calle Inés Verdejo González,5467,confirmado,A,sí,sí,no,3090,3122,,C,7,Habitada por el propietario,31-08-2026,35,no,catastro (lote declarado),\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-08,Calle Inés Verdejo González,5465,confirmado,A,sí,no,no,3054,3291,,C,8,Habitada por el propietario,30-08-2026,22,no,modelo de secuencia,\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-09,Calle Inés Verdejo González,5463,confirmado,A,sí,no,no,3018,3461,,C,9,Habitada por el propietario,31-08-2026,43,no,catastro (lote declarado),\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-10,Calle Inés Verdejo González,5461,confirmado,A,sí,no,no,2981,3630,,C,10,Habitada por arrendatarios,30-08-2026,20,no,catastro (lote declarado),\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-11,Calle Inés Verdejo González,5459,confirmado,A,sí,sí,no,2944,3800,,C,11,Habitada por el propietario,31-08-2026,62,no,modelo de secuencia,\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-12,Calle Inés Verdejo González,5457,confirmado,A,sí,sí,no,2908,3969,,C,12,Deshabitada o en construcción,29-08-2026,55,no,catastro (lote declarado),\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-13,Calle Inés Verdejo González,5455,confirmado,A,sí,no,no,2872,4139,,C,13,Habitada por el propietario,29-08-2026,42,no,catastro (lote declarado),\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-14,Calle Inés Verdejo González,5453,confirmado,A,sí,sí,no,2835,4308,,C,14,Habitada por el propietario,29-08-2026,56,no,modelo de secuencia,\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-15,Calle Inés Verdejo González,5451,confirmado,A,sí,sí,no,2759,4490,,C,15,Habitada por el propietario,30-08-2026,57,no,modelo de secuencia,\"tramo C-15→C-01 (5451→5479), columna oriente\"\nC-16,Calle Inés Verdejo González,5481,confirmado,A,sí,no,no,2693,4637,,C,16,Habitada por el propietario,31-08-2026,49,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-17,Calle Inés Verdejo González,5483,confirmado,A,sí,no,no,2499,4519,,C,17,Habitada por el propietario,30-08-2026,19,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-18,Calle Inés Verdejo González,5485,confirmado,A,sí,no,no,2336,4488,,C,18,Uso esporádico (segunda vivienda),29-08-2026,6,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-19,Calle Inés Verdejo González,5487,confirmado,B,sí,sí,no,2174,4456,,C,19,,29-08-2026,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-20,Calle Inés Verdejo González,5489,confirmado,B,sí,no,no,2011,4425,,C,20,Habitada por arrendatarios,30-08-2026,53,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-21,Calle Inés Verdejo González,5491,confirmado,B,sí,sí,no,1848,4393,,C,21,Habitada por el propietario,29-08-2026,12,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-22,Calle Inés Verdejo González,5493,confirmado,B,sí,no,no,1685,4365,,C,22,Habitada por el propietario,07-09-2026,16,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-23,Calle Inés Verdejo González,5495,confirmado,B,sí,no,no,1523,4330,,C,23,Habitada por el propietario,29-08-2026,58,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-24,Calle Inés Verdejo González,5497,confirmado,B,sí,no,no,1360,4299,,C,24,Deshabitada o en construcción,29-08-2026,17,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-25,Calle Inés Verdejo González,5499,confirmado,B,sí,sí,no,1198,4267,,C,25,Deshabitada o en construcción,29-08-2026,23,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-26,Calle Inés Verdejo González,5501,confirmado,B,sí,no,no,1035,4235,,C,26,Deshabitada o en construcción,01-09-2026,7,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-27,Calle Inés Verdejo González,5503,confirmado,B,sí,sí,no,872,4204,,C,27,,30-08-2026,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-28,Calle Inés Verdejo González,5505,confirmado,B,sí,sí,no,710,4172,,C,28,Habitada por el propietario,03-09-2026,52,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-29,Calle Inés Verdejo González,5507,confirmado,B,sí,sí,no,543,4164,,C,29,Habitada por el propietario,03-09-2026,45,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-30,Calle Inés Verdejo González,5509,confirmado,B,sí,sí,no,394,4059,,C,30,Habitada por el propietario,31-08-2026,34,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-31,Calle Inés Verdejo González,5511,inferido,B,no,no,no,493,3832,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,31,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-32,Calle Inés Verdejo González,5513,inferido,B,no,no,no,531,3659,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,32,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-33,Calle Inés Verdejo González,5515,inferido,B,no,no,no,568,3486,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,33,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-34,Calle Inés Verdejo González,5517,confirmado,B,sí,no,no,605,3312,,C,34,Habitada por el propietario,31-08-2026,5,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-35,Calle Inés Verdejo González,5519,confirmado,B,sí,no,no,643,3139,,C,35,,29-08-2026,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-36,Calle Inés Verdejo González,5521,confirmado,B,sí,no,no,680,2966,,C,36,,29-08-2026,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-37,Calle Inés Verdejo González,5523,inferido,B,no,no,no,717,2793,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,37,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-38,Calle Inés Verdejo González,5525,confirmado,B,sí,sí,no,754,2619,,C,38,Habitada por el propietario,29-08-2026,31,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-39,Calle Inés Verdejo González,5527,confirmado,C,sí,no,no,791,2446,,C,39,,29-08-2026,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-40,Calle Inés Verdejo González,5529,inferido,C,no,no,no,829,2274,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,40,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-41,Calle Inés Verdejo González,5531,inferido,C,no,no,no,866,2099,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,41,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-42,Calle Inés Verdejo González,5533,inferido,C,no,no,no,903,1926,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,42,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-43,Calle Inés Verdejo González,5535,inferido,C,no,no,no,940,1752,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,43,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-44,Calle Inés Verdejo González,5537,inferido,C,no,no,no,978,1579,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,44,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-45,Calle Inés Verdejo González,5539,confirmado,C,sí,sí,no,1015,1406,,C,45,,11-09-2026,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-46,Calle Inés Verdejo González,5541,confirmado,C,sí,sí,no,1052,1233,,C,46,Habitada por el propietario,31-08-2026,27,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-47,Calle Inés Verdejo González,5543,confirmado,C,sí,no,no,1188,1040,,C,47,Habitada por el propietario,30-08-2026,2,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-48,Calle Inés Verdejo González,5545,confirmado,C,sí,no,no,1367,1269,,C,48,Habitada por el propietario,30-08-2026,13,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-49,Calle Inés Verdejo González,5547,confirmado,C,compromiso,compromiso,no,1505,1379,\"Pago comprometido (quincena), aún no recibido\",C,49,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-50,Calle Inés Verdejo González,5549,confirmado,C,sí,no,no,1643,1485,,C,50,Deshabitada o en construcción,29-08-2026,50,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-51,Calle Inés Verdejo González,5551,confirmado,C,sí,sí,no,1781,1601,,C,51,Habitada por el propietario,29-08-2026,18,no,catastro (lote declarado),\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-52,Calle Inés Verdejo González,5553,inferido,C,no,no,no,1919,1712,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,52,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-53,Calle Inés Verdejo González,5555,inferido,C,no,no,no,2057,1823,\"Número inferido por secuencia: tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\",C,53,,,,no,modelo de secuencia,\"tramo C-16→C-53 (5481→5555), sur–poniente–norte interior\"\nC-54,Calle Jorge Armando Saavedra Plaza,6101,confirmado,C,sí,sí,no,1162,746,,C,54,Habitada por el propietario,29-08-2026,59,no,modelo de secuencia,\"fila norte C-54→C-61 (6101→6073), paso 4 decreciente\"\nC-55,Calle Jorge Armando Saavedra Plaza,6097,inferido,C,no,no,no,1282,842,\"Número inferido por secuencia: fila norte C-54→C-61 (6101→6073), paso 4 decreciente\",C,55,,,,no,modelo de secuencia,\"fila norte C-54→C-61 (6101→6073), paso 4 decreciente\"\nC-56,Calle Jorge Armando Saavedra Plaza,6093,inferido,C,no,no,no,1417,950,\"Número inferido por secuencia: fila norte C-54→C-61 (6101→6073), paso 4 decreciente\",C,56,,,,no,modelo de secuencia,\"fila norte C-54→C-61 (6101→6073), paso 4 decreciente\"\nC-57,Calle Jorge Armando Saavedra Plaza,6089,inferido,C,no,no,no,1553,1059,\"Número inferido por secuencia: fila norte C-54→C-61 (6101→6073), paso 4 decreciente\",C,57,,,,no,modelo de secuencia,\"fila norte C-54→C-61 (6101→6073), paso 4 decreciente\"\nC-58,Calle Jorge Armando Saavedra Plaza,6085,confirmado,C,sí,sí,no,1689,1167,\"Lote declarado por el vecino; fuera de los tramos verificados, confirmar en Etapa 2\",C,58,Habitada por el propietario,29-08-2026,48,no,catastro (lote declarado),\"fila norte C-54→C-61 (6101→6073), paso 4 decreciente\"\nC-59,Calle Jorge Armando Saavedra Plaza,6081,inferido,C,no,no,no,1824,1275,\"Número inferido por secuencia: fila norte C-54→C-61 (6101→6073), paso 4 decreciente\",C,59,,,,no,modelo de secuencia,\"fila norte C-54→C-61 (6101→6073), paso 4 decreciente\"\nC-60,Calle Jorge Armando Saavedra Plaza,6077,inferido,C,no,no,no,1960,1382,\"Número inferido por secuencia: fila norte C-54→C-61 (6101→6073), paso 4 decreciente\",C,60,,,,no,modelo de secuencia,\"fila norte C-54→C-61 (6101→6073), paso 4 decreciente\"\nC-61,Calle Jorge Armando Saavedra Plaza,6073,confirmado,C,sí,no,no,2096,1490,,C,61,,07-09-2026,,no,modelo de secuencia,\"fila norte C-54→C-61 (6101→6073), paso 4 decreciente\"\nD-01,Calle Inés Verdejo González,5557,inferido,C,no,no,no,1999,2306,\"Número inferido por secuencia: tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\",D,1,,,,no,modelo de secuencia,\"tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\"\nD-02,Calle Inés Verdejo González,5559,confirmado,C,sí,no,no,1855,2189,,D,2,Habitada por el propietario,30-08-2026,33,no,modelo de secuencia,\"tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\"\nD-03,Calle Inés Verdejo González,5561,confirmado,C,sí,no,no,1710,2073,,D,3,Habitada por el propietario,29-08-2026,61,no,modelo de secuencia,\"tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\"\nD-04,Calle Inés Verdejo González,5563,confirmado,C,sí,sí,no,1571,1961,,D,4,Deshabitada o en construcción,31-08-2026,15,no,catastro (lote declarado),\"tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\"\nD-05,Calle Inés Verdejo González,5565,confirmado,C,sí,no,sí,1367,1833,,D,5,Uso esporádico (segunda vivienda),29-08-2026,21,no,catastro (lote declarado),\"tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\"\nD-06,Calle Inés Verdejo González,5567,inferido,C,no,no,no,1327,2020,\"Número inferido por secuencia: tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\",D,6,,,,no,modelo de secuencia,\"tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\"\nD-07,Calle Inés Verdejo González,5569,inferido,C,no,no,no,1292,2182,\"Número inferido por secuencia: tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\",D,7,,,,no,modelo de secuencia,\"tramo D-01→D-07 (5557→5569), continúa la secuencia de MZ-C\"\nD-08,Pasaje Rafael Segundo Araya Villanueva,5571,confirmado,C,sí,sí,no,1500,2262,,D,8,Habitada por el propietario,29-08-2026,46,no,catastro (lote declarado),pasaje D-08→D-11 (5571→5577)\nD-09,Pasaje Rafael Segundo Araya Villanueva,5573,confirmado,C,sí,sí,no,1635,2371,,D,9,Habitada por el propietario,29-08-2026,8,no,catastro (lote declarado),pasaje D-08→D-11 (5571→5577)\nD-10,Pasaje Rafael Segundo Araya Villanueva,5575,confirmado,C,sí,sí,no,1770,2480,,D,10,,29-08-2026,,no,modelo de secuencia,pasaje D-08→D-11 (5571→5577)\nD-11,Pasaje Rafael Segundo Araya Villanueva,5577,confirmado,C,sí,no,no,1905,2588,,D,11,Habitada por el propietario,29-08-2026,32,no,catastro (lote declarado),pasaje D-08→D-11 (5571→5577)\nE-01,Calle Jorge Armando Saavedra Plaza,6069,confirmado,C,sí,no,no,2469,1756,\"Lote declarado por el vecino; fuera de los tramos verificados, confirmar en Etapa 2\",E,1,Deshabitada o en construcción,29-08-2026,30,no,catastro (lote declarado),\"fila norte, continúa desde C-61\"\nE-02,Calle Jorge Armando Saavedra Plaza,6065,confirmado,C,sí,no,no,2587,1835,\"Lote declarado por el vecino; fuera de los tramos verificados, confirmar en Etapa 2\",E,2,Habitada por el propietario,31-08-2026,9,no,catastro (lote declarado),fila norte\nE-03,Calle Inés Verdejo González,5579,confirmado,C,sí,sí,no,2448,2045,,E,3,Habitada por el propietario,29-08-2026,63,no,modelo de secuencia,\"tramo E-03→E-05 (5579→5583), frente calle interior\"\nE-04,Calle Inés Verdejo González,5581,inferido,C,no,no,no,2414,2193,\"Número inferido por secuencia: tramo E-03→E-05 (5579→5583), frente calle interior\",E,4,,,,no,modelo de secuencia,\"tramo E-03→E-05 (5579→5583), frente calle interior\"\nE-05,Calle Inés Verdejo González,5583,inferido,C,no,no,no,2384,2330,\"Número inferido por secuencia: tramo E-03→E-05 (5579→5583), frente calle interior\",E,5,,,,no,modelo de secuencia,\"tramo E-03→E-05 (5579→5583), frente calle interior\"\nE-06,Pasaje Alfonso del Carmen Araya Castillo,5585,confirmado,C,sí,sí,no,2353,2477,,E,6,,31-08-2026,,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-07,Pasaje Alfonso del Carmen Araya Castillo,5587,confirmado,A,compromiso,compromiso,no,2331,2621,\"Pago comprometido (quincena), aún no recibido\",E,7,Habitada por el propietario,,29,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-08,Pasaje Alfonso del Carmen Araya Castillo,5589,confirmado,A,sí,no,no,2268,2755,,E,8,Habitada por el propietario,29-08-2026,54,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-09,Pasaje Alfonso del Carmen Araya Castillo,5591,confirmado,A,sí,no,no,2183,2878,,E,9,Habitada por el propietario,29-08-2026,39,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-10,Pasaje Alfonso del Carmen Araya Castillo,5593,confirmado,A,sí,sí,no,2080,2984,,E,10,Habitada por el propietario,29-08-2026,24,no,catastro (lote declarado),pasaje E-06→E-19 (5585→5611)\nE-11,Pasaje Alfonso del Carmen Araya Castillo,5595,confirmado,B,sí,no,no,1960,3073,,E,11,Habitada por el propietario,31-08-2026,36,no,catastro (lote declarado),pasaje E-06→E-19 (5585→5611)\nE-12,Pasaje Alfonso del Carmen Araya Castillo,5597,confirmado,B,sí,sí,no,1827,3120,,E,12,Habitada por el propietario,02-09-2026,14,no,catastro (lote declarado),pasaje E-06→E-19 (5585→5611)\nE-13,Pasaje Alfonso del Carmen Araya Castillo,5599,confirmado,B,sí,sí,no,1689,3185,,E,13,Habitada por el propietario,29-08-2026,60,no,catastro (lote declarado),pasaje E-06→E-19 (5585→5611)\nE-14,Pasaje Alfonso del Carmen Araya Castillo,5601,inferido,B,no,no,no,1560,3265,Número inferido por secuencia: pasaje E-06→E-19 (5585→5611),E,14,,,,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-15,Pasaje Alfonso del Carmen Araya Castillo,5603,inferido,B,no,no,no,1442,3361,Número inferido por secuencia: pasaje E-06→E-19 (5585→5611),E,15,,,,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-16,Pasaje Alfonso del Carmen Araya Castillo,5605,inferido,B,no,no,no,1337,3472,Número inferido por secuencia: pasaje E-06→E-19 (5585→5611),E,16,,,,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-17,Pasaje Alfonso del Carmen Araya Castillo,5607,inferido,B,no,no,no,1247,3594,Número inferido por secuencia: pasaje E-06→E-19 (5585→5611),E,17,,,,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-18,Pasaje Alfonso del Carmen Araya Castillo,5609,inferido,B,no,no,no,1174,3728,Número inferido por secuencia: pasaje E-06→E-19 (5585→5611),E,18,,,,no,modelo de secuencia,pasaje E-06→E-19 (5585→5611)\nE-19,Pasaje Alfonso del Carmen Araya Castillo,5611,confirmado,B,sí,no,sí,1124,3871,,E,19,Habitada por el propietario,29-08-2026,4,no,catastro (lote declarado),pasaje E-06→E-19 (5585→5611)\nE-20,por confirmar,5613,inferido,B,no,no,no,1499,3944,Número inferido por secuencia: E-20/E-21 (5613/5615): entre el fin de Alfonso Araya y el inicio de Dafne Castillo — calle por confirmar,E,20,,,,no,modelo de secuencia,E-20/E-21 (5613/5615): entre el fin de Alfonso Araya y el inicio de Dafne Castillo — calle por confirmar\nE-21,por confirmar,5615,inferido,B,no,no,no,1587,3804,Número inferido por secuencia: E-20/E-21 (5613/5615): entre el fin de Alfonso Araya y el inicio de Dafne Castillo — calle por confirmar,E,21,,,,no,modelo de secuencia,E-20/E-21 (5613/5615): entre el fin de Alfonso Araya y el inicio de Dafne Castillo — calle por confirmar\nE-22,Pasaje Dafne Castillo,5617,confirmado,B,sí,no,no,1677,3689,,E,22,Habitada por el propietario,29-08-2026,41,no,catastro (lote declarado),pasaje E-22→E-31 (5617→5635)\nE-23,Pasaje Dafne Castillo,5619,inferido,B,no,no,no,1787,3592,Número inferido por secuencia: pasaje E-22→E-31 (5617→5635),E,23,,,,no,modelo de secuencia,pasaje E-22→E-31 (5617→5635)\nE-24,Pasaje Dafne Castillo,5621,confirmado,B,sí,no,no,1914,3517,,E,24,Habitada por el propietario,31-08-2026,10,no,catastro (lote declarado),pasaje E-22→E-31 (5617→5635)\nE-25,Pasaje Dafne Castillo,5623,confirmado,B,sí,sí,no,2048,3457,,E,25,Habitada por el propietario,30-08-2026,64,no,catastro (lote declarado),pasaje E-22→E-31 (5617→5635)\nE-26,Pasaje Dafne Castillo,5625,confirmado,A,sí,sí,no,2181,3384,,E,26,,29-08-2026,,no,modelo de secuencia,pasaje E-22→E-31 (5617→5635)\nE-27,Pasaje Dafne Castillo,5627,confirmado,A,sí,no,no,2304,3294,,E,27,Habitada por el propietario,30-08-2026,51,no,modelo de secuencia,pasaje E-22→E-31 (5617→5635)\nE-28,Pasaje Dafne Castillo,5629,confirmado,A,sí,sí,no,2418,3191,,E,28,Habitada por el propietario,29-08-2026,26,no,catastro (lote declarado),pasaje E-22→E-31 (5617→5635)\nE-29,Pasaje Dafne Castillo,5631,confirmado,A,sí,sí,no,2514,3073,,E,29,Habitada por el propietario,04-09-2026,40,no,catastro (lote declarado),pasaje E-22→E-31 (5617→5635)\nE-30,Pasaje Dafne Castillo,5633,confirmado,A,sí,sí,no,2598,2946,,E,30,,29-08-2026,,no,modelo de secuencia,pasaje E-22→E-31 (5617→5635)\nE-31,Pasaje Dafne Castillo,5635,confirmado,A,sí,sí,no,2666,2809,,E,31,Habitada por el propietario,01-09-2026,37,no,catastro (lote declarado),pasaje E-22→E-31 (5617→5635)\nE-32,Calle Inés Verdejo González,5637,confirmado,A,sí,sí,no,2718,2666,,E,32,Habitada por el propietario,29-08-2026,3,no,catastro (lote declarado),\"tramo E-32→E-35 (5637→5643), frente calle interior\"\nE-33,Calle Inés Verdejo González,5639,confirmado,A,sí,no,no,2753,2522,,E,33,Deshabitada o en construcción,01-09-2026,38,no,modelo de secuencia,\"tramo E-32→E-35 (5637→5643), frente calle interior\"\nE-34,Calle Inés Verdejo González,5641,inferido,A,no,no,no,2783,2385,\"Número inferido por secuencia: tramo E-32→E-35 (5637→5643), frente calle interior\",E,34,,,,no,modelo de secuencia,\"tramo E-32→E-35 (5637→5643), frente calle interior\"\nE-35,Calle Inés Verdejo González,5643,confirmado,A,sí,sí,no,2815,2227,,E,35,Habitada por el propietario,29-08-2026,28,no,catastro (lote declarado),\"tramo E-32→E-35 (5637→5643), frente calle interior\"\nE-36,Calle Jorge Armando Saavedra Plaza,6061,confirmado,C,sí,sí,no,2733,1915,,E,36,Deshabitada o en construcción,29-08-2026,25,no,modelo de secuencia,fila norte\nE-37,Calle Jorge Armando Saavedra Plaza,6057,inferido,C,no,no,no,2910,2000,Número inferido por secuencia: fila norte (extremo oriente),E,37,,,,no,modelo de secuencia,fila norte (extremo oriente)\n", "contactos": "id_contacto,id_casa,nombre,telefono,rol,prioridad,cargado_en_alarma,verificado,numero_casa,calle,estado_telefono,email,autoriza_uso_datos,fuente,nota,sector\nCT-001,C-15,Ruth gonzalez,+56994545604,administrador,1,no,no,5451,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 57,,A\nCT-002,C-14,Camila fernanda ahumada rojas,+56972715302,administrador,1,no,no,5453,Calle Inés Verdejo González,ok,Camilahumada.r@gmail.com,\"Sí, autorizo\",catastro Id 56,,A\nCT-003,C-13,Jose urbina,+56986617559,administrador,1,no,no,5455,Calle Inés Verdejo González,ok,Jose.urbina28@outlook.com,\"Sí, autorizo\",catastro Id 42,,A\nCT-004,C-13,Oscar fuentes,+56949268011,contacto,2,no,no,5455,Calle Inés Verdejo González,ok,Ofugo95@gmail.com,\"Sí, autorizo\",catastro Id 42,,A\nCT-005,C-12,Paula Francisca,,administrador,1,no,no,5457,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,A\nCT-006,C-11,Francisca rojas,+56999372780,administrador,1,no,no,5459,Calle Inés Verdejo González,ok,,No autorizo,catastro Id 62,,A\nCT-007,C-11,Rodolfo venegas,+56947865513,contacto,2,no,no,5459,Calle Inés Verdejo González,ok,,No autorizo,catastro Id 62,,A\nCT-008,C-10,Anahis Belen Sánchez Soriano,+56942855763,administrador,1,no,no,5461,Calle Inés Verdejo González,ok,anahis1411belen@gmail.com,\"Sí, autorizo\",catastro Id 20,,A\nCT-009,C-10,Kevin Matías Magallanes Nieto,+56934622462,contacto,2,no,no,5461,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 20,,A\nCT-010,C-09,Camila Oñate,+56954455883,administrador,1,no,no,5463,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 43,,A\nCT-011,C-09,Miguel Gómez,+56989394259,contacto,2,no,no,5463,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 43,,A\nCT-012,C-08,Susan Andrea castillo campusano,+56990049903,administrador,1,no,no,5465,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 22,,A\nCT-013,C-08,Matías Antonio Navarro verdugo,+56920503574,contacto,2,no,no,5465,Calle Inés Verdejo González,ok,Matías.antonio.navarro.v@gmail.com,\"Sí, autorizo\",catastro Id 22,,A\nCT-014,C-08,Gaspar Antonio Navarro castillo,,contacto,3,no,no,5465,Calle Inés Verdejo González,pendiente,,\"Sí, autorizo\",catastro Id 22,pendiente: sin teléfono,A\nCT-015,C-08,Agustín Ignacio Jaime Castillo,,contacto,4,no,no,5465,Calle Inés Verdejo González,pendiente,,\"Sí, autorizo\",catastro Id 22,pendiente: sin teléfono,A\nCT-016,C-07,Sebastián Rojas Molina,+56968278446,administrador,1,no,no,5467,Calle Inés Verdejo González,ok,Sebastian.irojasmolina@gmail.com,\"Sí, autorizo\",catastro Id 35,,A\nCT-017,C-04,Rocio Alvarez Tapia,+56936227881,administrador,1,no,no,5473,Calle Inés Verdejo González,ok,Rocioanahia@gmail.com,\"Sí, autorizo\",catastro Id 11,,A\nCT-018,C-04,Miguel Pinilla Tapia,+56997744814,contacto,2,no,no,5473,Calle Inés Verdejo González,ok,M.pinillatapia@gmail.com,\"Sí, autorizo\",catastro Id 11,,A\nCT-019,C-04,Fernanda Romero Álvarez,,contacto,3,no,no,5473,Calle Inés Verdejo González,pendiente,,\"Sí, autorizo\",catastro Id 11,pendiente: sin teléfono,A\nCT-020,C-04,Gustavo Pinilla Álvarez,,contacto,4,no,no,5473,Calle Inés Verdejo González,pendiente,,\"Sí, autorizo\",catastro Id 11,pendiente: sin teléfono,A\nCT-021,C-03,Omar Mauricio Campaña Oyanader,+56942750864,administrador,1,no,no,5475,Calle Inés Verdejo González,ok,omarcampanao@gmail.com,\"Sí, autorizo\",catastro Id 47,,A\nCT-022,C-03,Paula del Pilar Veliz Veliz,+56983095254,contacto,2,no,no,5475,Calle Inés Verdejo González,ok,paufloemi@gmail.com,\"Sí, autorizo\",catastro Id 47,,A\nCT-023,C-01,Gerladin Villavicencio Reyes,,administrador,1,no,no,5479,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,A\nCT-024,C-16,Nicolás Guillermo Guzmán González,+56968552503,administrador,1,no,no,5481,Calle Inés Verdejo González,ok,Guz.nicolas1925@gmail.com,\"Sí, autorizo\",catastro Id 49,,A\nCT-025,C-17,Javiera Sias Pizarro,+56996529599,administrador,1,no,no,5483,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 19,,A\nCT-026,C-18,Pablo Nicolás Toro Vergara,+56991216435,administrador,1,no,no,5485,Calle Inés Verdejo González,ok,pablo.toro@live.cl,\"Sí, autorizo\",catastro Id 6,,A\nCT-027,C-19,Manuel,,administrador,1,no,no,5487,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,B\nCT-028,C-20,María José Tabilo Rodriguez,+56948570710,administrador,1,no,no,5489,Calle Inés Verdejo González,ok,Majo.tabilo1012@gmail.com,\"Sí, autorizo\",catastro Id 53,,B\nCT-029,C-20,Felipe Collao,,contacto,2,no,no,5489,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,B\nCT-030,C-21,Tamara Morales Páez,+56981881048,administrador,1,no,no,5491,Calle Inés Verdejo González,ok,Tamara.andrea96@hotmail.com,\"Sí, autorizo\",catastro Id 12,,B\nCT-031,C-21,Luis pasten rivera,+56975238481,contacto,2,no,no,5491,Calle Inés Verdejo González,ok,luispasten1109@gmail.com,\"Sí, autorizo\",catastro Id 12,,B\nCT-032,C-22,Ixcia Rojas Pasten,+56979721760,administrador,1,no,no,5493,Calle Inés Verdejo González,ok,Ixcia.rojas28@gmail.com,\"Sí, autorizo\",catastro Id 16,,B\nCT-033,C-22,Francisco Portilla Rodríguez,+56987353583,contacto,2,no,no,5493,Calle Inés Verdejo González,ok,Ixcia.rojas28@gmail.com,\"Sí, autorizo\",catastro Id 16,,B\nCT-034,C-23,Catalina Villarroel,,administrador,1,no,no,5495,Calle Inés Verdejo González,pendiente,,\"Sí, autorizo\",catastro Id 58,pendiente: sin teléfono,B\nCT-035,C-23,Nicolás Inostroza,+56987484295,contacto,2,no,no,5495,Calle Inés Verdejo González,ok,nicolas.inostroza91@gmail.com,\"Sí, autorizo\",catastro Id 58,,B\nCT-036,C-24,Dilan,,administrador,1,no,no,5497,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,B\nCT-037,C-25,Elizabeth Rivera,,administrador,1,no,no,5499,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,B\nCT-038,C-26,Carol Fuentes,,administrador,1,no,no,5501,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,B\nCT-039,C-27,Carlos Moyano,,administrador,1,no,no,5503,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,B\nCT-040,C-28,Kevin Acosta,+56985277739,administrador,1,no,no,5505,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 52,,B\nCT-041,C-29,Natalia Alfaro Garcia,+56994063582,administrador,1,no,no,5507,Calle Inés Verdejo González,ok,Garciaalfaronatalia@gmail.com,\"Sí, autorizo\",catastro Id 45,,B\nCT-042,C-30,Pablo Ignacio Fernández Alfaro,+56950260838,administrador,1,no,no,5509,Calle Inés Verdejo González,ok,pablo.fernandez.alfaro@hotmail.com,\"Sí, autorizo\",catastro Id 34,,B\nCT-043,C-34,Paulina Andrea Rivera Rivera,+56996293112,administrador,1,no,no,5517,Calle Inés Verdejo González,ok,Paulinaandreariverar@gmail.com,\"Sí, autorizo\",catastro Id 5,,B\nCT-044,C-34,Mayte Pérez Rivera,+56996293112,contacto,2,no,no,5517,Calle Inés Verdejo González,duplicado,,\"Sí, autorizo\",catastro Id 5,duplicado: mismo teléfono que Paulina Andrea Rivera Rivera (misma casa) — no cargar dos veces,B\nCT-045,C-34,Diego Pérez Cisternas,+56976162738,contacto,3,no,no,5517,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 5,,B\nCT-046,C-35,Ivan Rojas,,administrador,1,no,no,5519,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,B\nCT-047,C-36,Francisco Pallauta,,administrador,1,no,no,5521,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,B\nCT-048,C-38,Pamela Páez,+56942834713,administrador,1,no,no,5525,Calle Inés Verdejo González,ok,Pamelita75paez@gmail.com,\"Sí, autorizo\",catastro Id 31,,B\nCT-049,C-38,Antar Morales,+56965955374,contacto,2,no,no,5525,Calle Inés Verdejo González,ok,Pamelita75paez@gmail.com,\"Sí, autorizo\",catastro Id 31,,B\nCT-050,C-39,Johana,,administrador,1,no,no,5527,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-051,C-45,José Gómez,,administrador,1,no,no,5539,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-052,C-46,Ronald Cofre,+56959022012,administrador,1,no,no,5541,Calle Inés Verdejo González,ok,Ronaldcofre1@gmail.com,\"Sí, autorizo\",catastro Id 27,,C\nCT-053,C-47,Luciano Andrés Olivares López,+56978541902,administrador,1,no,no,5543,Calle Inés Verdejo González,ok,luciano.olivares@outlook.com,\"Sí, autorizo\",catastro Id 2,,C\nCT-054,C-47,Selena Lorenz Barrios Araya,+56940819284,contacto,2,no,no,5543,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 2,,C\nCT-055,C-48,Sofía Belén Acuna Contreras,+56983239331,administrador,1,no,no,5545,Calle Inés Verdejo González,ok,sofiaacuna1997@gmail.com,\"Sí, autorizo\",catastro Id 13,,C\nCT-056,C-48,Duvan Mondaca Mondaca,,contacto,2,no,no,5545,Calle Inés Verdejo González,pendiente,,\"Sí, autorizo\",catastro Id 13,pendiente: sin teléfono,C\nCT-057,C-49,Bry,,administrador,1,no,no,5547,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-058,C-50,Valesca León,,administrador,1,no,no,5549,Calle Inés Verdejo González,pendiente,,\"Sí, autorizo\",catastro Id 50,pendiente: sin teléfono,C\nCT-059,C-51,Emilio Enrique Cortés Rodríguez,+56988883685,administrador,1,no,no,5551,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 18,,C\nCT-060,D-02,Domingo Antonio Pinto Torres,+56993587255,administrador,1,no,no,5559,Calle Inés Verdejo González,ok,domingo.pinto@hotmail.com,\"Sí, autorizo\",catastro Id 33,,C\nCT-061,D-03,Cristian Jesús Alvarado Tello,+56945455010,administrador,1,no,no,5561,Calle Inés Verdejo González,ok,cristianalvaradotello@gmail.com,\"Sí, autorizo\",catastro Id 61,,C\nCT-062,D-04,Giancarla Moreno Manquez,,administrador,1,no,no,5563,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-063,D-05,Marcela Iglesias Blanco,+56978761526,administrador,1,no,no,5565,Calle Inés Verdejo González,ok,M_igles@hotmail.com,\"Sí, autorizo\",catastro Id 21,,C\nCT-064,D-08,Mariela Sepúlveda ulveda Díaz,,administrador,1,no,no,5571,Pasaje Rafael Segundo Araya Villanueva,pendiente,,\"Sí, autorizo\",catastro Id 46,pendiente: sin teléfono,C\nCT-065,D-08,Ignacio Rojas Jorquera,+56998914938,contacto,2,no,no,5571,Pasaje Rafael Segundo Araya Villanueva,ok,Ignaciorojasjorquera@outlook.es,\"Sí, autorizo\",catastro Id 46,,C\nCT-066,D-09,Jossely angelica borquez collao,+56981666721,administrador,1,no,no,5573,Pasaje Rafael Segundo Araya Villanueva,ok,Jangelicaborquez7@gmail.com,\"Sí, autorizo\",catastro Id 8,,C\nCT-067,D-09,Luis Alejandro espinosa cortes,+56955113751,contacto,2,no,no,5573,Pasaje Rafael Segundo Araya Villanueva,ok,Luisalejandro12@gmail.com,\"Sí, autorizo\",catastro Id 8,,C\nCT-068,D-10,Barbara,,administrador,1,no,no,5575,Pasaje Rafael Segundo Araya Villanueva,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-069,D-11,Francisco araya,+56964887198,administrador,1,no,no,5577,Pasaje Rafael Segundo Araya Villanueva,ok,Franciscocorteees@gmail.com,\"Sí, autorizo\",catastro Id 32,,C\nCT-070,D-11,Jery,,contacto,2,no,no,5577,Pasaje Rafael Segundo Araya Villanueva,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-071,E-03,Carolina niney Rojas plaza,+56963267888,administrador,1,no,no,5579,Calle Inés Verdejo González,ok,carolinaniney.36@gmail.com,\"Sí, autorizo\",catastro Id 63,,C\nCT-072,E-03,Eduardo Arturo Santibáñez cuevas,+56965064099,contacto,2,no,no,5579,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 63,,C\nCT-073,E-03,Ariela Catalina Santibáñez Rojas,+56940558053,contacto,3,no,no,5579,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 63,,C\nCT-074,E-03,Paula Carolina Santibáñez Rojas,+56930235672,contacto,4,no,no,5579,Calle Inés Verdejo González,ok,,\"Sí, autorizo\",catastro Id 63,,C\nCT-075,E-06,Muñoz Caniguante,,administrador,1,no,no,5585,Pasaje Alfonso del Carmen Araya Castillo,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-076,E-07,Viviana pasten,+56974828690,administrador,1,no,no,5587,Pasaje Alfonso del Carmen Araya Castillo,ok,vivianpg90@gmail.com,\"Sí, autorizo\",catastro Id 29,,A\nCT-077,E-07,Raul cerda cárcamo,,contacto,2,no,no,5587,Pasaje Alfonso del Carmen Araya Castillo,pendiente,,\"Sí, autorizo\",catastro Id 29,pendiente: sin teléfono,A\nCT-078,E-07,Antonella cerda,,contacto,3,no,no,5587,Pasaje Alfonso del Carmen Araya Castillo,pendiente,,\"Sí, autorizo\",catastro Id 29,pendiente: sin teléfono,A\nCT-079,E-08,Eduardo Gonzalez Angel,+56932191703,administrador,1,no,no,5589,Pasaje Alfonso del Carmen Araya Castillo,ok,Edonza.98@gmail.com,\"Sí, autorizo\",catastro Id 54,,A\nCT-080,E-09,Antonio fuentes,+56993830815,administrador,1,no,no,5591,Pasaje Alfonso del Carmen Araya Castillo,ok,antoniofuentes.alv@gmail.com,\"Sí, autorizo\",catastro Id 39,,A\nCT-081,E-09,Antonio Esteban fuentes Alvarado,+56993830815,contacto,2,no,no,5591,Pasaje Alfonso del Carmen Araya Castillo,duplicado,antoniofuentes.alv@gmail.com,\"Sí, autorizo\",catastro Id 39,duplicado: mismo teléfono que Antonio fuentes  (misma casa) — no cargar dos veces,A\nCT-082,E-09,analya magdalena juica Godoy,+56954943204,contacto,3,no,no,5591,Pasaje Alfonso del Carmen Araya Castillo,ok,analyajg@gmail.com,\"Sí, autorizo\",catastro Id 39,,A\nCT-083,E-10,Cristopher Salazar Carrasco,+56959225380,administrador,1,no,no,5593,Pasaje Alfonso del Carmen Araya Castillo,ok,Cristophesalazarc@gmail.com,\"Sí, autorizo\",catastro Id 24,,A\nCT-084,E-10,Romina Fernanda Muñoz Díaz,+56950879643,contacto,2,no,no,5593,Pasaje Alfonso del Carmen Araya Castillo,ok,Romina.fmd@gmail.com,\"Sí, autorizo\",catastro Id 24,,A\nCT-085,E-11,Manuel Farías,+56974207977,administrador,1,no,no,5595,Pasaje Alfonso del Carmen Araya Castillo,ok,manuel.farias0198@gmail.com,\"Sí, autorizo\",catastro Id 36,,B\nCT-086,E-11,Tania Becerra,+56956547676,contacto,2,no,no,5595,Pasaje Alfonso del Carmen Araya Castillo,ok,taniaebh@gmail.com,\"Sí, autorizo\",catastro Id 36,,B\nCT-087,E-12,Evelyn makarena Marty Cadenas,+56957560353,administrador,1,no,no,5597,Pasaje Alfonso del Carmen Araya Castillo,ok,Evelynmartycadenas@icloud.com,\"Sí, autorizo\",catastro Id 14,,B\nCT-088,E-12,Cristian Eduardo Meza Vera,+56986613636,contacto,2,no,no,5597,Pasaje Alfonso del Carmen Araya Castillo,ok,,\"Sí, autorizo\",catastro Id 14,,B\nCT-089,E-13,Italo alfredo cancino klapp,+56962482188,administrador,1,no,no,5599,Pasaje Alfonso del Carmen Araya Castillo,ok,italocancinoklapp@gmail.com,\"Sí, autorizo\",catastro Id 60,,B\nCT-090,E-19,MARIA JOSE TAPIA VEGA,+56971944353,administrador,1,no,no,5611,Pasaje Alfonso del Carmen Araya Castillo,ok,maria_jose_tapia@yahoo.es,\"Sí, autorizo\",catastro Id 4,,B\nCT-091,E-22,Tarek Cruces Fierro,+56998791312,administrador,1,no,no,5617,Pasaje Dafne Castillo,ok,tarek.or@gmail.com,\"Sí, autorizo\",catastro Id 41,,B\nCT-092,E-22,Francisca Vanessa Pedraza Naranjo,+56996120904,contacto,2,no,no,5617,Pasaje Dafne Castillo,ok,fran.vpedraza@gmail.com,\"Sí, autorizo\",catastro Id 41,,B\nCT-093,E-24,Jose Durán araya,+56983407920,administrador,1,no,no,5621,Pasaje Dafne Castillo,ok,ciclo30a@gmail.com,\"Sí, autorizo\",catastro Id 10,,B\nCT-094,E-24,Yael Rivera araya,,contacto,2,no,no,5621,Pasaje Dafne Castillo,pendiente,Yaelra52@gmail.com,\"Sí, autorizo\",catastro Id 10,pendiente: sin teléfono,B\nCT-095,E-25,Laura Andrea Torres Vegas,+56949990488,administrador,1,no,no,5623,Pasaje Dafne Castillo,ok,Laura.torres.vegas@gmail.com,\"Sí, autorizo\",catastro Id 64,,B\nCT-096,E-25,Hector Andres Anacona Tapia,+56947977476,contacto,2,no,no,5623,Pasaje Dafne Castillo,ok,,\"Sí, autorizo\",catastro Id 64,,B\nCT-097,E-26,Gabriel Cáceres,,administrador,1,no,no,5625,Pasaje Dafne Castillo,pendiente,,,listado de pagos,pendiente: sin teléfono,A\nCT-098,E-27,Iris huenopil rocha,+56949783964,administrador,1,no,no,5627,Pasaje Dafne Castillo,ok,renato_7792@hotmail.com,\"Sí, autorizo\",catastro Id 51,,A\nCT-099,E-27,Renato Almendra Rocha,+56993090902,contacto,2,no,no,5627,Pasaje Dafne Castillo,ok,renato_7792@hotmail.com,\"Sí, autorizo\",catastro Id 51,,A\nCT-100,E-27,Katiusca Huenopil rocha,+56959489226,contacto,3,no,no,5627,Pasaje Dafne Castillo,ok,renato_7792@hotmail.com,\"Sí, autorizo\",catastro Id 51,,A\nCT-101,E-27,Ángel Almendra Godoy,+56993090902,contacto,4,no,no,5627,Pasaje Dafne Castillo,duplicado,renato_7792@hotmail.com,\"Sí, autorizo\",catastro Id 51,duplicado: mismo teléfono que Renato Almendra Rocha (misma casa) — no cargar dos veces,A\nCT-102,E-28,Erick Francisco Morales Barrera,+56986542208,administrador,1,no,no,5629,Pasaje Dafne Castillo,ok,Erick.morales.b@hotmail.com,\"Sí, autorizo\",catastro Id 26,,A\nCT-103,E-29,Gustavo Pollanco Castillo,+56941818816,administrador,1,no,no,5631,Pasaje Dafne Castillo,ok,gpollanco@hotmail.com,\"Sí, autorizo\",catastro Id 40,,A\nCT-104,E-30,Sergio Dominguez,,administrador,1,no,no,5633,Pasaje Dafne Castillo,pendiente,,,listado de pagos,pendiente: sin teléfono,A\nCT-105,E-31,John Alexander Pardo Martinez,+56973092030,administrador,1,no,no,5635,Pasaje Dafne Castillo,ok,jhonp24@hotmail.com,\"Sí, autorizo\",catastro Id 37,,A\nCT-106,E-31,Lilia Marcela Perdomo Vargas,+56999845493,contacto,2,no,no,5635,Pasaje Dafne Castillo,ok,lmperdomo21@hotmail.com,\"Sí, autorizo\",catastro Id 37,,A\nCT-107,E-32,Cristian Alejandro Rios Ponce,+56991014316,administrador,1,no,no,5637,Calle Inés Verdejo González,ok,Cristianriosponce@gmail.com,\"Sí, autorizo\",catastro Id 3,,A\nCT-108,E-32,Sheryl Palta,,contacto,2,no,no,5637,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,A\nCT-109,E-33,Valeska Segovia,,administrador,1,no,no,5639,Calle Inés Verdejo González,pendiente,,,listado de pagos,pendiente: sin teléfono,A\nCT-110,E-35,Yarinka Estela Contreras Vera,+56932084958,administrador,1,no,no,5643,Calle Inés Verdejo González,ok,yaricontreras11@gmail.com,\"Sí, autorizo\",catastro Id 28,,A\nCT-111,E-35,Carlos Matias Garriga Michea,+56983010437,contacto,2,no,no,5643,Calle Inés Verdejo González,ok,carlosgarriga.michea@gmail.com,\"Sí, autorizo\",catastro Id 28,,A\nCT-112,E-36,Delfin Gonzalez Aguirre,,administrador,1,no,no,6061,Calle Jorge Armando Saavedra Plaza,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-113,E-02,Ariel Samuel Villalobos Prado,+56958053729,administrador,1,no,no,6065,Calle Jorge Armando Saavedra Plaza,ok,villalobos_pva@hotmail.com,\"Sí, autorizo\",catastro Id 9,,C\nCT-114,E-02,Vannya Gabriela Calderón Pacheco,+56949220648,contacto,2,no,no,6065,Calle Jorge Armando Saavedra Plaza,ok,vannya181314@gmail.com,\"Sí, autorizo\",catastro Id 9,,C\nCT-115,E-02,Liam Valentino Calderón Villalobos,,contacto,3,no,no,6065,Calle Jorge Armando Saavedra Plaza,pendiente,,\"Sí, autorizo\",catastro Id 9,pendiente: sin teléfono,C\nCT-116,E-01,Carla Briceño,,administrador,1,no,no,6069,Calle Jorge Armando Saavedra Plaza,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-117,C-61,Francisco Cifuentes,,administrador,1,no,no,6073,Calle Jorge Armando Saavedra Plaza,pendiente,,,listado de pagos,pendiente: sin teléfono,C\nCT-118,C-58,Camila Pérez,+56943404634,administrador,1,no,no,6085,Calle Jorge Armando Saavedra Plaza,ok,ca.perezolivares@gmail.com,\"Sí, autorizo\",catastro Id 48,,C\nCT-119,C-54,Johanna Berna cuadra,+56933725425,administrador,1,no,no,6101,Calle Jorge Armando Saavedra Plaza,ok,Johannabernac@gmail.com,\"Sí, autorizo\",catastro Id 59,,C\nCT-120,C-54,Claudio astorga,+56956585640,contacto,2,no,no,6101,Calle Jorge Armando Saavedra Plaza,ok,Claudioastorgap@gmail.com,\"Sí, autorizo\",catastro Id 59,,C\n", "controles": "n_control,id_casa,sector,fecha_entrega,entregado_a,estado,etiquetado\n1,,A,,,disponible,no\n2,,A,,,disponible,no\n3,,A,,,disponible,no\n4,,A,,,disponible,no\n5,,A,,,disponible,no\n6,,A,,,disponible,no\n7,,A,,,disponible,no\n8,,A,,,disponible,no\n9,,A,,,disponible,no\n10,,A,,,disponible,no\n11,,A,,,disponible,no\n12,,A,,,disponible,no\n13,,A,,,disponible,no\n14,,A,,,disponible,no\n15,,A,,,disponible,no\n16,,A,,,disponible,no\n17,,A,,,disponible,no\n18,,A,,,disponible,no\n19,,A,,,disponible,no\n20,,A,,,disponible,no\n21,,B,,,disponible,no\n22,,B,,,disponible,no\n23,,B,,,disponible,no\n24,,B,,,disponible,no\n25,,B,,,disponible,no\n26,,B,,,disponible,no\n27,,B,,,disponible,no\n28,,B,,,disponible,no\n29,,B,,,disponible,no\n30,,B,,,disponible,no\n31,,B,,,disponible,no\n32,,B,,,disponible,no\n33,,B,,,disponible,no\n34,,B,,,disponible,no\n35,,B,,,disponible,no\n36,,B,,,disponible,no\n37,,B,,,disponible,no\n38,,B,,,disponible,no\n39,,B,,,disponible,no\n40,,B,,,disponible,no\n41,,C,,,disponible,no\n42,,C,,,disponible,no\n43,,C,,,disponible,no\n44,,C,,,disponible,no\n45,,C,,,disponible,no\n46,,C,,,disponible,no\n47,,C,,,disponible,no\n48,,C,,,disponible,no\n49,,C,,,disponible,no\n50,,C,,,disponible,no\n51,,C,,,disponible,no\n52,,C,,,disponible,no\n53,,C,,,disponible,no\n54,,C,,,disponible,no\n55,,C,,,disponible,no\n56,,C,,,disponible,no\n57,,C,,,disponible,no\n58,,C,,,disponible,no\n59,,C,,,disponible,no\n60,,C,,,disponible,no\n", "alarmas": "id_sector,id_casa_anfitriona,numero_sim,imei,cupo_numeros_usado,cupo_controles_usado,radio_audible_m,radio_rf_m,fecha_instalacion,casas_asignadas,casas_afiliadas_asignadas,cupo_numeros_max,cupo_controles_max,notas\nA,,,,0,0,250,1000,,32,27,200,20,\"Sector A1 · Norte (columna oriente C-01→C-18 y E-07→E-10, E-26→E-35). Anfitriona pendiente de definir. Sin círculo en el mapa hasta cargar id_casa_anfitriona\"\nB,E-19,,,0,0,250,1000,,35,23,200,20,Sector A2 · Oriente (C-19→C-38 y E-11→E-25). Anfitriona ofrecida. Radio audible = estimación inicial para sirena 60 W (ajustar con medición); radio RF = catálogo 1000 m sin obstáculos (en terreno urbano esperar 100–300 m)\nC,D-05,,,0,0,250,1000,,42,23,200,20,\"Sector A3 · Surponiente (C-39→C-61, MZ-D, E-01→E-06, E-36, E-37). Anfitriona ofrecida. Mismos valores iniciales\"\n"};
+</script>
+</body>
+</html>
