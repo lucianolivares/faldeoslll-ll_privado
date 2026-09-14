@@ -233,7 +233,6 @@ function buildLayerChips() {
   el.querySelectorAll("input").forEach(i => i.addEventListener("change", () => { VIS[i.dataset.k] = i.checked; render(); }));
 }
 buildLayerChips();
-buildResalteChips();
 
 // ---------- resaltado por estado ----------
 const RESALTES = [["sin_tel", "sin teléfono"], ["tel_revisar", "teléfono por revisar"], ["sin_verif", "sin verificar"], ["no_cargado", "no cargado en la alarma"], ["sin_control", "sin control RF"]];
@@ -264,6 +263,7 @@ function buildResalteChips() {
 }
 function ordenControl(n) { n = num(n); return n <= 20 ? n : n <= 40 ? n - 20 : n - 40; }
 function textoControl(k) { const n = num(k.n_control); return "N° " + n + " · orden " + ordenControl(n) + " de 20 en la alarma · ID " + n + " en el identificador"; }
+buildResalteChips();
 
 // ---------- render ----------
 function colorCasa(c) { return si(c.afiliada) ? (CONFIG.colores[(c.sector || "").trim()] || "#3b82f6") : null; }
