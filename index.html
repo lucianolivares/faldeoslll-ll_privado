@@ -93,6 +93,14 @@
   .lbl{font-size:11px;font-weight:600;color:#1c2430;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
   .lbl.inf{color:#7a8290;font-weight:500}
   .street{display:inline-block;position:absolute;left:0;top:0;font-size:13px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#334155;white-space:nowrap;text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 6px #fff;pointer-events:none}
+  .house .dim{opacity:.22}
+  .house .hl{filter:drop-shadow(0 0 0 transparent)}
+  .hlring{animation:none}
+  .resalte{display:flex;flex-wrap:wrap;gap:5px;align-items:center;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:12px;padding:6px 9px;box-shadow:var(--shadow);font-size:12px}
+  .resalte b{font-weight:600;margin-right:2px}
+  .resalte button{font:inherit;font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--ink)}
+  .resalte button.on{background:#111827;color:#fff;border-color:#111827}
+  .resalte .cnt{font-size:11px;color:var(--muted);width:100%}
   .idbadge{position:absolute;left:12px;top:-22px;background:#111827;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;letter-spacing:.3px}
   .leaflet-tooltip.num{background:transparent;border:0;box-shadow:none;padding:0}
   .leaflet-tooltip.num::before{display:none}
@@ -119,6 +127,7 @@
   </header>
   <div id="map">
     <div class="layers" id="layers"></div>
+    <div class="resalte" id="resalte"></div>
   </div>
   <aside>
     <div class="tabs"><button class="on" data-tab="detalle">Detalle</button><button data-tab="resumen">Cobertura y cupos</button></div>
@@ -224,6 +233,37 @@ function buildLayerChips() {
   el.querySelectorAll("input").forEach(i => i.addEventListener("change", () => { VIS[i.dataset.k] = i.checked; render(); }));
 }
 buildLayerChips();
+buildResalteChips();
+
+// ---------- resaltado por estado ----------
+const RESALTES = [["sin_tel", "sin teléfono"], ["tel_revisar", "teléfono por revisar"], ["sin_verif", "sin verificar"], ["no_cargado", "no cargado en la alarma"], ["sin_control", "sin control RF"]];
+let RESALTE = "";
+function telsOk(c) { return num(c.telefonos_ok) || DATA.contactos.filter(k => k.id_casa === c.id_casa && (k.estado_telefono || "ok").trim() === "ok" && (k.telefono || "").trim()).length; }
+function cumpleResalte(c, modo) {
+  if (!si(c.afiliada)) return false;
+  const cts = DATA.contactos.filter(k => k.id_casa === c.id_casa);
+  const conTel = cts.filter(k => (k.telefono || "").trim() && (k.estado_telefono || "ok").trim() === "ok");
+  switch (modo) {
+    case "sin_tel":     return telsOk(c) === 0;
+    case "tel_revisar": return cts.some(k => ["revisar", "duplicado"].includes((k.estado_telefono || "").trim()));
+    case "sin_verif":   return cts.some(k => !si(k.verificado));
+    case "no_cargado":  return conTel.length > 0 && conTel.some(k => !si(k.cargado_en_alarma));
+    case "sin_control": return !si(c.tiene_control);
+  }
+  return false;
+}
+function buildResalteChips() {
+  const el = document.getElementById("resalte"); if (!el) return;
+  el.innerHTML = "<b>Resaltar:</b>" + [["", "ninguno"]].concat(RESALTES).map(([k, t]) =>
+    `<button data-r="${k}" class="${RESALTE === k ? "on" : ""}">${t}</button>`).join("") + `<span class="cnt" id="resalteCnt"></span>`;
+  el.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { RESALTE = b.dataset.r; buildResalteChips(); render(); }));
+  const cnt = document.getElementById("resalteCnt");
+  if (!RESALTE) cnt.textContent = "Marca en amarillo las casas afiliadas que cumplen la condición y atenúa el resto.";
+  else { const n = DATA.casas.filter(c => cumpleResalte(c, RESALTE)).length;
+         cnt.textContent = n + (n === 1 ? " casa afiliada" : " casas afiliadas") + " en esa condición."; }
+}
+function ordenControl(n) { n = num(n); return n <= 20 ? n : n <= 40 ? n - 20 : n - 40; }
+function textoControl(k) { const n = num(k.n_control); return "N° " + n + " · orden " + ordenControl(n) + " de 20 en la alarma · ID " + n + " en el identificador"; }
 
 // ---------- render ----------
 function colorCasa(c) { return si(c.afiliada) ? (CONFIG.colores[(c.sector || "").trim()] || "#3b82f6") : null; }
@@ -235,6 +275,10 @@ function iconCasa(c) {
   else if (control) svg = `<svg width="26" height="26" viewBox="-13 -13 26 26"><rect x="-8.5" y="-8.5" width="17" height="17" rx="3" transform="rotate(45)" fill="${fill}" stroke="${stroke}" stroke-width="2"/><circle r="2.6" fill="#fff"/></svg>`;
   else svg = `<svg width="24" height="24" viewBox="-12 -12 24 24"><circle r="8" fill="${fill}" stroke="${stroke}" stroke-width="2" ${comp ? 'stroke-dasharray="3 2"' : ""}/></svg>`;
   if (ident) svg += `<span class="idbadge">ID</span>`;
+  if (RESALTE) {
+    if (cumpleResalte(c, RESALTE)) svg = `<svg width="44" height="44" viewBox="-22 -22 44 44" style="position:absolute;left:-22px;top:-22px"><circle r="17" fill="none" stroke="#f59e0b" stroke-width="3.5" stroke-dasharray="5 4" opacity=".95"/></svg>` + svg;
+    else svg = `<span class="dim">${svg}</span>`;
+  }
   return L.divIcon({ className: "house", html: svg, iconSize: [0, 0], iconAnchor: [0, 0] });
 }
 function alarmaDe(c) { return DATA.alarmas.find(a => (a.id_casa_anfitriona || "").trim() === c.id_casa); }
@@ -257,6 +301,7 @@ function render() {
   }
   for (const v of CONFIG.vias) L.marker(toLL(v.x, v.y), { interactive: false, icon: L.divIcon({ className: "", html: `<div class="street" data-minzoom="${v.minZoom ?? -9}" style="transform:translate(-50%,-50%) rotate(${v.rot}deg)">${v.nombre}</div>`, iconSize: [0, 0] }) }).addTo(layers.vias);
   updateLabels();
+  buildResalteChips();
   if (activeTab === "resumen") showResumen();
 }
 function updateLabels() {
@@ -275,7 +320,7 @@ function analisis() {
     const casas = DATA.casas.filter(c => (c.sector || "").trim() === s);
     const afilS = casas.filter(c => si(c.afiliada));
     const ctrlCasas = afilS.filter(c => si(c.tiene_control));
-    const ctrlEnl = DATA.controles.filter(k => (k.sector || "").trim() === s && ["enlazado", "probado"].includes((k.estado || "").trim().toLowerCase()));
+    const ctrlEnl = DATA.controles.filter(k => (k.sector || "").trim() === s && ["enlazado", "probado", "entregado"].includes((k.estado || "").trim().toLowerCase()));
     const cts = DATA.contactos.filter(k => byId[k.id_casa] && (byId[k.id_casa].sector || "").trim() === s && (k.estado_telefono || "ok").trim() === "ok");
     const cargados = cts.filter(k => si(k.cargado_en_alarma)), verificados = cargados.filter(k => si(k.verificado));
     const fueraAud = anf ? afilS.filter(c => distM(c, anf) > r.audible) : afilS;
@@ -319,7 +364,7 @@ function showCasa(id) {
     <div class="sub">${esc(c.id_casa)} · manzana ${esc(c.manzana)} lote ${esc(c.lote)}</div>
     <div>${estado}</div>
     <div class="kv">
-      <div>Control RF</div><div>${si(c.tiene_control) ? "sí" + (ctrls.length ? " · N° " + ctrls.map(k => esc(k.n_control)).join(", ") : " · <span class='inf'>sin número asignado</span>") : esc(c.tiene_control || "no")}</div>
+      <div>Control RF</div><div>${si(c.tiene_control) ? (ctrls.length ? ctrls.map(k => esc(textoControl(k))).join("<br>") : "sí · <span class='inf'>sin número asignado</span>") : ((c.notas || "").toLowerCase().includes("solicita control") ? "<span class='inf'>no · solicitó uno, pendiente de asignar</span>" : esc(c.tiene_control || "no"))}</div>
       ${anf && si(c.afiliada) ? `<div>Distancia a alarma</div><div>${Math.round(distM(c, anf))} m hasta ${esc(anf.id_casa)}${anfS ? (distM(c, anf) <= radios(anfS).audible ? ` · <span style="color:var(--ok)">dentro del radio audible</span>` : ` · <span style="color:var(--bad)">fuera del radio audible</span>`) : ""}</div>` : ""}
       ${si(c.es_anfitriona) ? `<div>Anfitriona</div><div><b>sí</b> · alarma del ${esc(CONFIG.nombresSector[s] || s)}${si(c.modulo_identificador) ? " · <b>módulo identificador</b>" : ""}</div>` : ""}
       ${c.situacion_vivienda ? `<div>Vivienda</div><div>${esc(c.situacion_vivienda)}</div>` : ""}
