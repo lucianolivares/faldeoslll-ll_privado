@@ -237,11 +237,11 @@ buildLayerChips();
 // ---------- resaltado por estado ----------
 const RESALTES = [["sin_tel", "sin teléfono"], ["tel_revisar", "teléfono por revisar"], ["sin_verif", "sin verificar"], ["no_cargado", "no cargado en la alarma"], ["sin_control", "sin control RF"]];
 let RESALTE = "";
-function telsOk(c) { return num(c.telefonos_ok) || DATA.contactos.filter(k => k.id_casa === c.id_casa && (k.estado_telefono || "ok").trim() === "ok" && (k.telefono || "").trim()).length; }
+function telsOk(c) { return num(c.telefonos_ok) || DATA.contactos.filter(k => k.id_casa === c.id_casa && (k.estado_telefono || "").trim() === "ok" && (k.telefono || "").trim()).length; }
 function cumpleResalte(c, modo) {
   if (!si(c.afiliada)) return false;
-  const cts = DATA.contactos.filter(k => k.id_casa === c.id_casa);
-  const conTel = cts.filter(k => (k.telefono || "").trim() && (k.estado_telefono || "ok").trim() === "ok");
+  const cts = DATA.contactos.filter(k => k.id_casa === c.id_casa && usado(k));
+  const conTel = cts.filter(k => (k.telefono || "").trim() && (k.estado_telefono || "").trim() === "ok");
   switch (modo) {
     case "sin_tel":     return telsOk(c) === 0;
     case "tel_revisar": return cts.some(k => ["revisar", "duplicado"].includes((k.estado_telefono || "").trim()));
@@ -261,6 +261,7 @@ function buildResalteChips() {
   else { const n = DATA.casas.filter(c => cumpleResalte(c, RESALTE)).length;
          cnt.textContent = n + (n === 1 ? " casa afiliada" : " casas afiliadas") + " en esa condición."; }
 }
+const usado = k => ((k.nombre || "").trim() || (k.telefono || "").trim());
 function ordenControl(n) { n = num(n); return n <= 20 ? n : n <= 40 ? n - 20 : n - 40; }
 function textoControl(k) { const n = num(k.n_control); return "N° " + n + " · orden " + ordenControl(n) + " de 20 en la alarma · ID " + n + " en el identificador"; }
 buildResalteChips();
@@ -321,7 +322,7 @@ function analisis() {
     const afilS = casas.filter(c => si(c.afiliada));
     const ctrlCasas = afilS.filter(c => si(c.tiene_control));
     const ctrlEnl = DATA.controles.filter(k => (k.sector || "").trim() === s && ["enlazado", "probado", "entregado"].includes((k.estado || "").trim().toLowerCase()));
-    const cts = DATA.contactos.filter(k => byId[k.id_casa] && (byId[k.id_casa].sector || "").trim() === s && (k.estado_telefono || "ok").trim() === "ok");
+    const cts = DATA.contactos.filter(k => byId[k.id_casa] && (byId[k.id_casa].sector || "").trim() === s && (k.telefono || "").trim() && (k.estado_telefono || "").trim() === "ok");
     const cargados = cts.filter(k => si(k.cargado_en_alarma)), verificados = cargados.filter(k => si(k.verificado));
     const fueraAud = anf ? afilS.filter(c => distM(c, anf) > r.audible) : afilS;
     const fueraRF = anf ? ctrlCasas.filter(c => distM(c, anf) > r.rf) : ctrlCasas;
@@ -353,7 +354,7 @@ function showCasa(id) {
   const c = byId[id]; if (!c) return;
   lastDetail = () => showCasa(id); if (activeTab !== "detalle") { activeTab = "detalle"; document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === "detalle")); }
   const col = colorCasa(c), s = (c.sector || "").trim();
-  const cts = DATA.contactos.filter(r => r.id_casa === id).sort((a, b) => (num(a.prioridad) || 9) - (num(b.prioridad) || 9));
+  const cts = DATA.contactos.filter(r => r.id_casa === id && usado(r)).sort((a, b) => (num(a.prioridad) || 9) - (num(b.prioridad) || 9));
   const ctrls = DATA.controles.filter(r => r.id_casa === id);
   const al = alarmaDe(c);
   const anfS = DATA.alarmas.find(a => a.id_sector === s), anf = anfS && byId[(anfS.id_casa_anfitriona || "").trim()];
